@@ -55,7 +55,7 @@ jobs:
           fi
           
           # 组合最终的 Release 标签 
-          FINAL_RELEASE_TAG="umi-${APP_CODE_VERSION}_rust-${RUST_TAG}"
+          FINAL_RELEASE_TAG="${APP_CODE_VERSION}_rust-${RUST_TAG}-umi"
           
           # 写入环境变量
           echo "RUST_TAG=$RUST_TAG" >> $GITHUB_ENV
@@ -112,7 +112,8 @@ jobs:
           -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/app/release.jks" \
           -Pandroid.injected.signing.store.password="$STORE_PASSWORD" \
           -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
-          -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          -Pandroid.injected.signing.key.password="$KEY_PASSWORD" \
+          -Papp_version_name="${{ env.APP_CODE_VERSION }}"
           
       # 6. 创建 GitHub Release 
       - name: Create Release

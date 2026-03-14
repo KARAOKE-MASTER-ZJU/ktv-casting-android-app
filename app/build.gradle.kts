@@ -11,12 +11,16 @@ android {
     namespace = "zju.bangdream.ktv.casting"
     compileSdk = 36
 
+    val appVersionName = (project.findProperty("app_version_name") as String?)
+        ?: System.getenv("APP_CODE_VERSION")
+        ?: "1.1.0"
+
     defaultConfig {
         applicationId = "zju.bangdream.ktv.casting"
         minSdk = 24
         targetSdk = 36
         versionCode = 2
-        versionName = "1.1.0"
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
