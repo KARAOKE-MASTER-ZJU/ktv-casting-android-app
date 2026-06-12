@@ -37,7 +37,7 @@ fun DeviceSelectorScreen(
     var inputError by remember { mutableStateOf<String?>(null) }
 
     // DLNA 搜索状态
-    var dlnaExpanded by remember { mutableStateOf(false) }
+    var dlnaShowManualInput by remember { mutableStateOf(false) }
     var deviceList by remember { mutableStateOf(emptyArray<DlnaDeviceItem>()) }
     var isSearching by remember { mutableStateOf(false) }
     var isDirectConnecting by remember { mutableStateOf(false) }
@@ -100,13 +100,7 @@ fun DeviceSelectorScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         // ── 模式卡片：DLNA ───────────────────────────────────────────────
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth().clickable {
-                if (!validateInputs()) return@clickable
-                saveSettings()
-                dlnaExpanded = !dlnaExpanded
-            }
-        ) {
+        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.padding(16.dp),
                 verticalAlignment = Alignment.Top
@@ -115,43 +109,61 @@ fun DeviceSelectorScreen(
                     modifier = Modifier.padding(end = 12.dp, top = 2.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("DLNA 局域网投屏", style = MaterialTheme.typography.titleMedium)
-                    Text("适合 纯K 包厢、家庭 WiFi",
-                        style = MaterialTheme.typography.labelMedium,
+                    Text("适合 纯K、家庭 WiFi", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("无需登录任何账号，直接搜索同一局域网内支持 DLNA 的设备（电视、智能屏幕等）。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 自动搜索按钮
+                    Button(
+                        onClick = {
+                            if (!validateInputs()) return@Button
+                            saveSettings()
+                            isSearching = true; searchError = null; dlnaShowManualInput = false; deviceList = emptyArray()
+                            thread {
+                                val results = RustEngine.searchDevices()
+                                deviceList = results; isSearching = false
+                                if (results.isEmpty()) {
+                                    searchError = "未发现设备，请检查设备是否在线和 WiFi 是否支持多播"
+                                    dlnaShowManualInput = true
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isSearching && !isDirectConnecting
+                    ) { Text(if (isSearching) "正在搜索..." else "搜索 DLNA 设备") }
                 }
-                Text(if (dlnaExpanded) "▲" else "▼",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(start = 8.dp, top = 2.dp))
             }
         }
 
-        // DLNA 展开区域
-        AnimatedVisibility(visible = dlnaExpanded) {
-            Column(modifier = Modifier.padding(top = 8.dp)) {
-                // 自动搜索
-                Button(
-                    onClick = {
-                        isSearching = true; searchError = null
-                        thread {
-                            val results = RustEngine.searchDevices()
-                            deviceList = results; isSearching = false
-                            if (results.isEmpty())
-                                searchError = "未发现设备，请确认设备与手机在同一局域网，且 WiFi 支持多播"
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isSearching && !isDirectConnecting
-                ) { Text(if (isSearching) "正在搜索..." else "自动搜索可用设备") }
+        // 搜索结果或错误提示
+        if (searchError != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("搜索失败", style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.error)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(searchError!!, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { dlnaShowManualInput = !dlnaShowManualInput },
+                        modifier = Modifier.align(Alignment.End)
+                    ) { Text(if (dlnaShowManualInput) "收起" else "手动输入 IP") }
+                }
+            }
+        }
 
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("手动输入 IP（WiFi 不支持多播时使用）",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.secondary)
-                Spacer(modifier = Modifier.height(4.dp))
+        // 手动输入 IP（默认隐藏，仅在搜索失败时显示）
+        AnimatedVisibility(visible = dlnaShowManualInput) {
+            Column(modifier = Modifier.padding(top = 8.dp)) {
                 OutlinedTextField(
                     value = directIp,
                     onValueChange = { directIp = it },
@@ -165,11 +177,11 @@ fun DeviceSelectorScreen(
                             style = MaterialTheme.typography.labelSmall)
                     }
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Button(
                     onClick = {
                         if (directIp.isBlank()) return@Button
-                        saveSettings(); isDirectConnecting = true; searchError = null
+                        saveSettings(); isDirectConnecting = true; deviceList = emptyArray()
                         val url = normalizeDeviceUrl(directIp)
                         thread {
                             val results = RustEngine.searchDeviceByUrl(url)
@@ -181,31 +193,26 @@ fun DeviceSelectorScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isSearching && !isDirectConnecting && directIp.isNotBlank()
                 ) { Text(if (isDirectConnecting) "正在连接..." else "直接连接") }
+            }
+        }
 
-                searchError?.let { err ->
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(err, color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall)
-                }
-
-                if (deviceList.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("发现设备 (${deviceList.size}):", style = MaterialTheme.typography.titleSmall)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    deviceList.forEach { device ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable {
-                                saveSettings()
-                                onDeviceSelect(baseUrl, roomIdStr.toLongOrNull() ?: 0L, device)
-                            },
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text(device.name, style = MaterialTheme.typography.bodyLarge)
-                                Text(device.location, style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.secondary)
-                            }
-                        }
+        // 设备列表
+        if (deviceList.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("发现设备 (${deviceList.size}):", style = MaterialTheme.typography.titleSmall)
+            Spacer(modifier = Modifier.height(4.dp))
+            deviceList.forEach { device ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable {
+                        saveSettings()
+                        onDeviceSelect(baseUrl, roomIdStr.toLongOrNull() ?: 0L, device)
+                    },
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(device.name, style = MaterialTheme.typography.bodyLarge)
+                        Text(device.location, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary)
                     }
                 }
             }
@@ -229,11 +236,11 @@ fun DeviceSelectorScreen(
                     modifier = Modifier.padding(end = 12.dp, top = 2.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("哔哩哔哩云投屏", style = MaterialTheme.typography.titleMedium)
-                    Text("适合 温莎 KTV 或 WiFi 有严格限制的场景",
+                    Text("适合 温莎 KTV 或 被投屏设备和手机不在同一局域网下的场景",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("通过 B 站服务器中转，需要扫码登录 B 站账号。设备需先在 B 站 App 上开始投屏。",
+                    Text("通过b站云投屏，需要在被投屏设备的云视听小电视App和手机上都登录b站",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
