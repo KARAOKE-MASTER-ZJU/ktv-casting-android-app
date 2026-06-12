@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setupSystemRequirements()
         RustEngine.initLogging(2)
+        RustEngine.initSessionDir(filesDir.absolutePath)
         RustEngine.logFromKotlin("MainActivity", "应用启动", LogLevel.INFO)
 
         // 恢复上次保存的 B 站 Session（如果有）

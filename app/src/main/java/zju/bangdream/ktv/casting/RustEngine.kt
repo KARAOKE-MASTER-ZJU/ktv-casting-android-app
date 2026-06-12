@@ -32,6 +32,7 @@ object RustEngine {
 
     // 基础接口
     external fun initLogging(level: Int)
+    external fun initSessionDir(dirPath: String)
     external fun searchDevices(): Array<DlnaDeviceItem>
 
     /**
