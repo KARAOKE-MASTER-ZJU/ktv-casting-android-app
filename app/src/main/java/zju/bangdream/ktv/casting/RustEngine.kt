@@ -100,4 +100,10 @@ object RustEngine {
 
     /** 从 JSON 字符串恢复会话（应用启动时调用）；成功返回 1，失败返回 0 */
     external fun restoreBilibiliSession(json: String): Int
+
+    /** 检查 B 站 token 是否已过期；true 表示过期 */
+    external fun isBilibiliSessionExpired(): Boolean
+
+    /** 清除保存的 B 站 session；true 表示成功 */
+    external fun clearBilibiliSession(): Boolean
 }

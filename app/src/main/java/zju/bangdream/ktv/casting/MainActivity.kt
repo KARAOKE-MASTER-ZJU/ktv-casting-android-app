@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -15,12 +16,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import zju.bangdream.ktv.casting.ui.screens.BilibiliSetupScreen
 import zju.bangdream.ktv.casting.ui.screens.CastingControlScreen
 import zju.bangdream.ktv.casting.ui.screens.DeviceSelectorScreen
 import zju.bangdream.ktv.casting.ui.screens.LogScreen
 import zju.bangdream.ktv.casting.ui.screens.SettingsScreen
 import zju.bangdream.ktv.casting.ui.theme.KtvCastingTheme
+import zju.bangdream.ktv.casting.update.ApkDownloader
+import zju.bangdream.ktv.casting.update.UpdateChecker
+import zju.bangdream.ktv.casting.update.UpdateDialog
 
 class MainActivity : ComponentActivity() {
 
@@ -38,6 +44,9 @@ class MainActivity : ComponentActivity() {
             val ok = RustEngine.restoreBilibiliSession(savedSession)
             RustEngine.logFromKotlin("MainActivity", "B站会话恢复: $ok", LogLevel.INFO)
         }
+
+        // 检查应用更新
+        checkForAppUpdate()
 
         setContent {
             KtvCastingTheme {
@@ -119,6 +128,36 @@ class MainActivity : ComponentActivity() {
         }
         val wifiManager = getSystemService(WIFI_SERVICE) as WifiManager
         wifiManager.createMulticastLock("ktv_search_lock").acquire()
+    }
+
+    private fun checkForAppUpdate() {
+        lifecycleScope.launch {
+            try {
+                val updateChecker = UpdateChecker(this@MainActivity)
+                val releaseInfo = updateChecker.fetchLatestRelease()
+
+                if (releaseInfo != null && updateChecker.shouldUpdate(releaseInfo)) {
+                    UpdateDialog.showUpdateDialog(this@MainActivity, releaseInfo) {
+                        // 用户点击"现在更新"时的回调
+                        val downloader = ApkDownloader(this@MainActivity)
+                        downloader.downloadAndInstall(releaseInfo)
+                        Toast.makeText(
+                            this@MainActivity,
+                            "后台下载中，请稍候...",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    // 保存检查时间
+                    updateChecker.saveLastCheckTime(releaseInfo)
+                }
+            } catch (e: Exception) {
+                RustEngine.logFromKotlin(
+                    "MainActivity",
+                    "检查更新失败: ${e.message}",
+                    LogLevel.DEBUG
+                )
+            }
+        }
     }
 
     private fun startDlnaCastingService(url: String, room: Long, device: DlnaDeviceItem) {

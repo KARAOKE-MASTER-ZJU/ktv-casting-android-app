@@ -71,6 +71,16 @@ fun BilibiliSetupScreen(
     var devicesError by remember { mutableStateOf<String?>(null) }
     var retryKey by remember { mutableIntStateOf(0) }
     var refreshDevicesKey by remember { mutableIntStateOf(0) }
+    var showSwitchAccountDialog by remember { mutableStateOf(false) }
+
+    // 检测 token 是否过期（应用启动时自动调用）
+    LaunchedEffect(Unit) {
+        val isExpired = withContext(Dispatchers.IO) { RustEngine.isBilibiliSessionExpired() }
+        if (isExpired && loginStatus == 1) {
+            loginStatus = -2
+            statusText = "登录已过期，请重新扫码登录"
+        }
+    }
 
     // QR 登录轮询
     LaunchedEffect(retryKey) {
@@ -196,13 +206,22 @@ fun BilibiliSetupScreen(
             }
         } else {
             // ── 设备选择阶段 ─────────────────────────────────────────────
-            Text("选择投屏设备", style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("选择投屏设备", style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = { showSwitchAccountDialog = true }) {
+                    Text("切换账号")
+                }
+            }
             Text(
                 "请选择要控制的设备（设备需登录同一b站账号）",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.secondary,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -239,6 +258,27 @@ fun BilibiliSetupScreen(
                     }
                 }
             }
+        }
+
+        // 切换账号确认对话框
+        if (showSwitchAccountDialog) {
+            AlertDialog(
+                onDismissRequest = { showSwitchAccountDialog = false },
+                title = { Text("切换账号") },
+                text = { Text("确定要清除当前登录信息并重新扫码登录吗？") },
+                confirmButton = {
+                    Button(onClick = {
+                        showSwitchAccountDialog = false
+                        RustEngine.clearBilibiliSession()
+                        loginStatus = -2
+                        statusText = "正在获取二维码..."
+                        retryKey++
+                    }) { Text("确认") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSwitchAccountDialog = false }) { Text("取消") }
+                }
+            )
         }
     }
 }
