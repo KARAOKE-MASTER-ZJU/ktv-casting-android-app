@@ -5,12 +5,10 @@ permissions:
 
 on:
   push:
-    branches:
-      - master
     tags:
-      - 'v*' # 触发标签，例如 v1.0.0
+      - 'v*'
   repository_dispatch:
-    types: [rust-lib-updated] # 修复：加了空格，接收来自 Rust 库发出的更新信号
+    types: [rust-lib-updated]
 
 jobs:
   release-apk:
