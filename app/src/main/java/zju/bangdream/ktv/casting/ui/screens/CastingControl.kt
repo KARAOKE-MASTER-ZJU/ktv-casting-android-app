@@ -149,6 +149,16 @@ fun CastingControlContent(
             maxLines = 2
         )
 
+        if (songTitle == "暂无歌曲") {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "可尝试点击「下一首」，或去网页端确认是否已点歌",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+
         Spacer(modifier = Modifier.height(48.dp))
 
         // --- 进度控制区 ---
