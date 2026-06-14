@@ -1,5 +1,8 @@
 package zju.bangdream.ktv.casting.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -28,20 +31,33 @@ fun CastingControlScreen(
     val castMode by CastingService.castMode.collectAsState()
 
     var isPlaying by remember { mutableStateOf(true) }
+    var isSwitchingSong by remember { mutableStateOf(false) }
+    var switchingFromTitle by remember { mutableStateOf("") }
+
+    LaunchedEffect(songTitle) {
+        if (isSwitchingSong && songTitle != switchingFromTitle) {
+            isSwitchingSong = false
+        }
+    }
 
     CastingControlContent(
         deviceName = deviceName,
         roomId = roomId,
-        songTitle = songTitle, // 传入标题
+        songTitle = songTitle,
         castMode = castMode,
         currentSec = currentSec,
         totalSec = totalSec,
         isPlaying = isPlaying,
+        isSwitchingSong = isSwitchingSong,
         onTogglePause = {
             val result = RustEngine.togglePause()
             isPlaying = (result == 1)
         },
-        onNext = { RustEngine.nextSong() },
+        onNext = {
+            switchingFromTitle = songTitle
+            isSwitchingSong = true
+            RustEngine.nextSong()
+        },
         onSeek = { target ->
             thread { RustEngine.jumpToSecs(target) }
         },
@@ -57,11 +73,12 @@ fun CastingControlScreen(
 fun CastingControlContent(
     deviceName: String,
     roomId: Long,
-    songTitle: String, // 新增
+    songTitle: String,
     castMode: String = "dlna",
     currentSec: Long,
     totalSec: Long,
     isPlaying: Boolean,
+    isSwitchingSong: Boolean = false,
     onTogglePause: () -> Unit,
     onNext: () -> Unit,
     onSeek: (Int) -> Unit,
@@ -157,6 +174,35 @@ fun CastingControlContent(
                 color = Color.Gray,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
+        }
+
+        AnimatedVisibility(
+            visible = isSwitchingSong,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Surface(
+                modifier = Modifier.padding(top = 12.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shape = MaterialTheme.shapes.small
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Text(
+                        text = "切歌中...",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(48.dp))

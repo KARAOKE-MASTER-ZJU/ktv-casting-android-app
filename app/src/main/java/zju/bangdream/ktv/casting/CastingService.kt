@@ -97,7 +97,7 @@ class CastingService : Service() {
 
                     if (total - current <= 2 && current > 5) {
                         RustEngine.nextSong()
-                        delay(5000)
+                        delay(1000)
                     }
                 } else {
                     updateNotification("当前播放: $title")

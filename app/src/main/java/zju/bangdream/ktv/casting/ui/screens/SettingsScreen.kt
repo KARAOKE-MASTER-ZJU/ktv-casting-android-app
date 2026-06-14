@@ -26,7 +26,10 @@ import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.launch
 import zju.bangdream.ktv.casting.R
+import zju.bangdream.ktv.casting.update.UpdateChecker
+import zju.bangdream.ktv.casting.update.UpdateDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +41,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
     var isIgnoringBattery by remember { mutableStateOf(checkBatteryOptimizations(context)) }
     var isNotificationEnabled by remember { mutableStateOf(checkNotificationPermission(context)) }
+
+    val scope = rememberCoroutineScope()
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    // null=未检查, ""=已是最新, 其他=错误信息或"发现新版本"提示
+    var updateStatus by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -165,6 +173,69 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
                     }
                     Button(onClick = onOpenLogs) {
                         Text("打开")
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "检查更新", style = MaterialTheme.typography.titleMedium)
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    isCheckingUpdate = true
+                                    updateStatus = null
+                                    try {
+                                        val checker = UpdateChecker(context)
+                                        val release = checker.fetchLatestRelease()
+                                        if (release == null) {
+                                            updateStatus = "无法获取版本信息，请检查网络连接"
+                                        } else if (checker.shouldUpdate(release)) {
+                                            updateStatus = "发现新版本: ${release.tagName}"
+                                            UpdateDialog.showUpdateDialog(context, release) {
+                                                checker.saveLastCheckTime(release)
+                                            }
+                                        } else {
+                                            updateStatus = "已是最新版本 (${release.tagName})"
+                                        }
+                                    } catch (e: Exception) {
+                                        updateStatus = "检查失败: ${e.message}"
+                                    } finally {
+                                        isCheckingUpdate = false
+                                    }
+                                }
+                            },
+                            enabled = !isCheckingUpdate
+                        ) {
+                            if (isCheckingUpdate) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Text("检查")
+                            }
+                        }
+                    }
+                    updateStatus?.let { status ->
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = status,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (status.startsWith("检查失败") || status.startsWith("无法获取"))
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }

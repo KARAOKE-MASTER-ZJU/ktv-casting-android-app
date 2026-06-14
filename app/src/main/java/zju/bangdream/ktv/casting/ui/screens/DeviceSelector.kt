@@ -105,8 +105,7 @@ fun DeviceSelectorScreen(
                 modifier = Modifier.padding(16.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                Text("📡", style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(end = 12.dp, top = 2.dp))
+                Spacer(modifier = Modifier.width(4.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("DLNA 局域网投屏", style = MaterialTheme.typography.titleMedium)
                     Text("适合 纯K、家庭 WiFi", style = MaterialTheme.typography.labelMedium,
@@ -241,10 +240,9 @@ fun DeviceSelectorScreen(
                 modifier = Modifier.padding(16.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                Text("☁️", style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(end = 12.dp, top = 2.dp))
+                Spacer(modifier = Modifier.width(4.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("哔哩哔哩云投屏", style = MaterialTheme.typography.titleMedium)
+                    Text("哔哩哔哩小电视云投屏", style = MaterialTheme.typography.titleMedium)
                     Text("适合 温莎 KTV 或 被投屏设备和手机不在同一局域网下的场景",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary)
