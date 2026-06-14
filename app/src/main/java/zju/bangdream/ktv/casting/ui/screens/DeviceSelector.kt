@@ -21,7 +21,7 @@ import kotlin.concurrent.thread
 private fun normalizeDeviceUrl(input: String): String {
     val trimmed = input.trim()
     if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed
-    return "http://${trimmed.trimEnd('/')}:9958/bilibili/description.xml"
+    return "http://$trimmed"
 }
 
 @Composable
@@ -156,7 +156,7 @@ fun DeviceSelectorScreen(
                     TextButton(
                         onClick = { dlnaShowManualInput = !dlnaShowManualInput },
                         modifier = Modifier.align(Alignment.End)
-                    ) { Text(if (dlnaShowManualInput) "收起" else "手动输入 IP") }
+                    ) { Text(if (dlnaShowManualInput) "收起" else "手动输入地址") }
                 }
             }
         }
@@ -167,8 +167,8 @@ fun DeviceSelectorScreen(
                 OutlinedTextField(
                     value = directIp,
                     onValueChange = { directIp = it },
-                    label = { Text("设备 IP 或描述文件地址") },
-                    placeholder = { Text("192.168.x.x 或 http://ip:9958/...") },
+                    label = { Text("描述文件完整地址") },
+                    placeholder = { Text("http://设备IP:端口/路径") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     supportingText = {
@@ -176,6 +176,15 @@ fun DeviceSelectorScreen(
                         if (preview.isNotEmpty()) Text("将连接：$preview",
                             style = MaterialTheme.typography.labelSmall)
                     }
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "常见默认地址（将目标设备 IP 替换到对应位置）：\n" +
+                        "• bilibili 小电视：http://设备IP:9958/bilibili/description.xml\n" +
+                        "• Kodi（HTTP）：http://设备IP:1432/\n" +
+                        "• Kodi（XML）：http://设备IP:1743/DeviceDescription.xml",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(
