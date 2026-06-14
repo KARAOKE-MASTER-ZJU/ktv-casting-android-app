@@ -78,6 +78,11 @@ object RustEngine {
      */
     external fun getCurrentSongTitle(): String
 
+    /**
+     * 获取队列中还有多少首歌未播；-1 表示引擎未初始化
+     */
+    external fun getQueuedSongsCount(): Int
+
     // ---- 哔哩哔哩云投屏 ----
 
     /** 后台启动扫码登录流程，通过 getBilibiliLoginStatus() 轮询状态 */

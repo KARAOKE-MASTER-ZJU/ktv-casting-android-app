@@ -24,11 +24,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 只在 tag push (v*) 或 repository_dispatch 时执行，其他 push 提前退出
+          EVENT_NAME="${{ github.event_name }}"
+          REF="${{ github.ref }}"
+
+          if [ "$EVENT_NAME" = "push" ] && [[ "$REF" != refs/tags/v* ]]; then
+            echo "⚠️ Skipping build: Only triggered by tag push (v*) or repository_dispatch"
+            echo "Current trigger: $EVENT_NAME on $REF"
+            exit 0
+          fi
+
           # 获取当前代码的 Git 短哈希 (前 7 位)
           SHORT_SHA=$(git rev-parse --short HEAD)
-          
-          # 修复：if 和[ 之间加了空格
-          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+
+          if [ "$EVENT_NAME" = "repository_dispatch" ]; then
             # ===== 场景 A：Rust库更新自动触发 =====
             
             # 1. 获取 Rust 库版本

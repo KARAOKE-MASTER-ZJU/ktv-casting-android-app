@@ -33,10 +33,18 @@ fun CastingControlScreen(
     var isPlaying by remember { mutableStateOf(true) }
     var isSwitchingSong by remember { mutableStateOf(false) }
     var switchingFromTitle by remember { mutableStateOf("") }
+    var queuedCount by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(songTitle) {
         if (isSwitchingSong && songTitle != switchingFromTitle) {
             isSwitchingSong = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            queuedCount = RustEngine.getQueuedSongsCount()
+            kotlinx.coroutines.delay(1000)
         }
     }
 
@@ -49,6 +57,7 @@ fun CastingControlScreen(
         totalSec = totalSec,
         isPlaying = isPlaying,
         isSwitchingSong = isSwitchingSong,
+        queuedCount = queuedCount,
         onTogglePause = {
             val result = RustEngine.togglePause()
             isPlaying = (result == 1)
@@ -79,6 +88,7 @@ fun CastingControlContent(
     totalSec: Long,
     isPlaying: Boolean,
     isSwitchingSong: Boolean = false,
+    queuedCount: Int = 0,
     onTogglePause: () -> Unit,
     onNext: () -> Unit,
     onSeek: (Int) -> Unit,
@@ -172,6 +182,14 @@ fun CastingControlContent(
                 text = "可尝试点击「下一首」，或去网页端确认是否已点歌",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Gray,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        } else if (queuedCount > 0) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "队列中还有 $queuedCount 首歌",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.tertiary,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
