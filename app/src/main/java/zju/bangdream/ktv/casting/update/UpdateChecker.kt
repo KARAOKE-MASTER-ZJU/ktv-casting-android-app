@@ -34,7 +34,8 @@ class UpdateChecker(private val context: Context) {
 
     private val REPO_API_ENDPOINTS = listOf(
         "https://gh-proxy.com/https://api.github.com/repos/birchtree2/ktv-casting-android-app/releases/latest",
-        "https://api.github.com/repos/birchtree2/ktv-casting-android-app/releases/latest"
+        "https://api.github.com/repos/birchtree2/ktv-casting-android-app/releases/latest",
+        "https://api.github.com.cnpmjs.org/repos/birchtree2/ktv-casting-android-app/releases/latest"
     )
 
     suspend fun fetchLatestRelease(): ReleaseInfo? = withContext(Dispatchers.IO) {
