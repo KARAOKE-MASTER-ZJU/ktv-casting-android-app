@@ -152,6 +152,7 @@ jobs:
 
       # 7. 创建 GitHub Release
       - name: Create Release
+        id: release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.FINAL_RELEASE_TAG }}
@@ -162,3 +163,51 @@ jobs:
 
             更新内容:
             ${{ env.NOTES }}
+
+      # 8. 生成 release.json（完整的 Release 信息）
+      - name: Generate release.json
+        id: release-json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 获取完整的 Release 信息（与 GitHub API 格式一致）
+          RELEASE_JSON=$(gh release view ${{ env.FINAL_RELEASE_TAG }} --repo ${{ github.repository }} --json tagName,publishedAt,body,assets)
+
+          echo "✅ Release Info:"
+          echo "$RELEASE_JSON" | jq .
+
+          # 创建 release.json（保存在 /tmp 避免被覆盖）
+          mkdir -p /tmp/pages
+          echo "$RELEASE_JSON" | jq '
+          {
+            tag_name: .tagName,
+            published_at: .publishedAt,
+            body: .body,
+            html_url: "https://github.com/${{ github.repository }}/releases/tag/${{ env.FINAL_RELEASE_TAG }}",
+            assets: .assets | map({
+              name: .name,
+              browser_download_url: .url
+            })
+          }' > /tmp/pages/release.json
+
+          cat /tmp/pages/release.json
+
+      # 9. Checkout gh-pages 分支
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 1
+
+      # 10. 更新 release.json 并推送到 GitHub Pages
+      - name: Update and push release.json
+        run: |
+          # 复制生成的 release.json
+          cp /tmp/pages/release.json .
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add release.json
+          git commit -m "chore: update release info - ${{ env.APP_CODE_VERSION }}" || echo "No changes to commit"
+          git push origin gh-pages

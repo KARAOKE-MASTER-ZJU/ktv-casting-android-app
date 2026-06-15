@@ -34,27 +34,19 @@ class UpdateChecker(private val context: Context) {
         }
     }
 
-    private val REPO_API_ENDPOINTS = listOf(
-        "https://gh-proxy.com/https://api.github.com/repos/birchtree2/ktv-casting-android-app/releases/latest",
-        "https://api.github.com/repos/birchtree2/ktv-casting-android-app/releases/latest",
-        "https://api.github.com.cnpmjs.org/repos/birchtree2/ktv-casting-android-app/releases/latest"
-    )
-
     suspend fun fetchLatestRelease(): ReleaseInfo? = withContext(Dispatchers.IO) {
-        for (endpoint in REPO_API_ENDPOINTS) {
-            try {
-                return@withContext fetchFromEndpoint(endpoint)
-            } catch (e: Exception) {
-                android.util.Log.d("UpdateChecker", "Failed to fetch from $endpoint: ${e.message}")
-                continue
-            }
+        try {
+            fetchUpdateFromGitHubPages()
+        } catch (e: Exception) {
+            android.util.Log.d("UpdateChecker", "Failed to fetch update info from GitHub Pages: ${e.message}")
+            null
         }
-        null
     }
 
-    private fun fetchFromEndpoint(url: String): ReleaseInfo? {
+    private fun fetchUpdateFromGitHubPages(): ReleaseInfo? {
+        val updateUrl = "https://birchtree2.github.io/ktv-casting-android-app/release.json"
         val request = Request.Builder()
-            .url(url)
+            .url(updateUrl)
             .addHeader("User-Agent", "KTV-Casting-Android")
             .build()
 
