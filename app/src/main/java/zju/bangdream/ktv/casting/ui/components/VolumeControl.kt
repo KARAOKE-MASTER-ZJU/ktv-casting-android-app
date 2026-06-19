@@ -17,20 +17,48 @@ import kotlinx.coroutines.withContext
 import zju.bangdream.ktv.casting.RustEngine
 import kotlin.concurrent.thread
 
-@OptIn(ExperimentalMaterial3Api::class)
+private const val VOLUME_STEP = 5
+
 @Composable
 fun VolumeControlGroup(castMode: String = "dlna") {
+    if (castMode == "bilibili") {
+        BilibiliVolumeControl()
+    } else {
+        DlnaVolumeControl()
+    }
+}
+
+/**
+ * B站投屏没有绝对音量接口，只能发送设备原生的相对“音量+/-”指令，
+ * 也没有读回当前音量的方式，因此这里不展示滑条/具体数值，只提供 +/- 按钮。
+ */
+@Composable
+private fun BilibiliVolumeControl() {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Text(text = "设备音量（仅支持相对调节）", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+        Row(
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            IconButton(onClick = { thread { RustEngine.volumeDown(VOLUME_STEP) } }) {
+                Text("-", style = MaterialTheme.typography.titleMedium)
+            }
+            IconButton(onClick = { thread { RustEngine.volumeUp(VOLUME_STEP) } }) {
+                Text("+", style = MaterialTheme.typography.titleMedium)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DlnaVolumeControl() {
     var volumeValue by remember { mutableIntStateOf(50) }
     var isDragging by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            // 对于 Bilibili 投屏，初始值固定为 50（只能相对增减）
-            if (castMode == "bilibili") {
-                volumeValue = 50
-                return@withContext
-            }
-            // 对于 DLNA，尝试从设备获取
             repeat(5) {
                 val remoteVol = RustEngine.getVolume()
                 if (remoteVol > 0) {

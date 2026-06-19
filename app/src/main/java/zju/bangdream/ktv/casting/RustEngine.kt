@@ -69,6 +69,18 @@ object RustEngine {
     external fun getVolume(): Int
 
     /**
+     * 相对调高音量。DLNA 内部按 get+set 模拟；B站投屏直接发送设备原生的“音量+”指令。
+     * @return 1 为成功，-1 为失败
+     */
+    external fun volumeUp(step: Int): Int
+
+    /**
+     * 相对调低音量，详见 [volumeUp]。
+     * @return 1 为成功，-1 为失败
+     */
+    external fun volumeDown(step: Int): Int
+
+    /**
      * @return 音量，-1 为失败
      */
     external fun jumpToSecs(target: Int): Int
