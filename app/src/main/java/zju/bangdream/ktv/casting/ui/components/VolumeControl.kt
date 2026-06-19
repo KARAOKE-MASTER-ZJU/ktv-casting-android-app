@@ -30,8 +30,10 @@ fun VolumeControlGroup(castMode: String = "dlna") {
 
 /**
  * B站投屏没有绝对音量接口，只能发送设备原生的相对“音量+/-”指令，
- * 也没有读回当前音量的方式，因此这里不展示滑条/具体数值，只提供 +/- 按钮。
+ * 也没有读回当前音量的方式。滑条保留只是为了和 DLNA 模式布局对应，
+ * 固定为灰色静止状态，不可拖动。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BilibiliVolumeControl() {
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -44,6 +46,43 @@ private fun BilibiliVolumeControl() {
             IconButton(onClick = { thread { RustEngine.volumeDown(VOLUME_STEP) } }) {
                 Text("-", style = MaterialTheme.typography.titleMedium)
             }
+
+            // 没有真实音量可读回，滑条固定为灰色静止状态，仅用于和 DLNA 模式的布局对应
+            Slider(
+                value = 50f,
+                onValueChange = {},
+                enabled = false,
+                valueRange = 0f..100f,
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(
+                    disabledThumbColor = Color.Gray,
+                    disabledActiveTrackColor = Color.Gray,
+                    disabledInactiveTrackColor = Color.Gray.copy(alpha = 0.3f)
+                ),
+                thumb = {
+                    SliderDefaults.Thumb(
+                        interactionSource = remember { MutableInteractionSource() },
+                        modifier = Modifier
+                            .size(10.dp)
+                            .offset(y = 2.5.dp),
+                        thumbSize = DpSize(10.dp, 10.dp),
+                        colors = SliderDefaults.colors(disabledThumbColor = Color.Gray),
+                        enabled = false
+                    )
+                },
+                track = { sliderState ->
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        modifier = Modifier.height(2.dp),
+                        enabled = false,
+                        colors = SliderDefaults.colors(
+                            disabledActiveTrackColor = Color.Gray,
+                            disabledInactiveTrackColor = Color.Gray.copy(alpha = 0.3f)
+                        )
+                    )
+                }
+            )
+
             IconButton(onClick = { thread { RustEngine.volumeUp(VOLUME_STEP) } }) {
                 Text("+", style = MaterialTheme.typography.titleMedium)
             }
