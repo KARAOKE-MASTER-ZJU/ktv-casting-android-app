@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a single-module Android project. The app module lives in `app/`, with Kotlin source under `app/src/main/java/zju/bangdream/ktv/casting`. UI code is organized into `ui/screens`, `ui/components`, and `ui/theme`; update-related code is in `update`. Android resources are in `app/src/main/res`, and manifest/config XML files are in `app/src/main/AndroidManifest.xml` and `app/src/main/res/xml`.
+This is a single-module Android project. Kotlin source lives under `app/src/main/java/zju/bangdream/ktv/casting`. UI code is in `ui/screens`, `ui/components`, and `ui/theme`; update code is in `update`. Resources are in `app/src/main/res`, with manifest/config XML in `app/src/main/AndroidManifest.xml` and `app/src/main/res/xml`.
 
 Native Rust artifacts belong in `app/src/main/jniLibs/<abi>/libktv_casting_lib.so`. Unit tests live in `app/src/test`; instrumented tests live in `app/src/androidTest`.
 
@@ -18,7 +18,7 @@ Open the repository in Android Studio for Compose development and device debuggi
 
 ## Coding Style & Naming Conventions
 
-Use Kotlin and Jetpack Compose idioms. Keep composables in PascalCase, for example `SettingsScreen` or `VolumeControl`; keep functions and properties in lower camelCase. Preserve the package root `zju.bangdream.ktv.casting`. Prefer small screen/component files over adding unrelated UI to `MainActivity.kt`.
+Use Kotlin and Jetpack Compose idioms. Keep composables in PascalCase, for example `SettingsScreen`; keep functions and properties in lower camelCase. Preserve `zju.bangdream.ktv.casting`. Prefer small screen/component files over adding unrelated UI to `MainActivity.kt`.
 
 Use 4-space indentation for Kotlin and Gradle Kotlin DSL files. Keep dependency versions in `gradle/libs.versions.toml` unless the project already declares a one-off dependency inline.
 
@@ -26,13 +26,13 @@ Use 4-space indentation for Kotlin and Gradle Kotlin DSL files. Keep dependency 
 
 Use JUnit 4 in `app/src/test/java`. Use AndroidX Test, Espresso, and Compose UI tests in `app/src/androidTest/java`. Name tests after behavior, such as `queueEmpty_disablesNextButton`.
 
-This repository is normally verified through GitHub Actions rather than local Gradle runs. After committing, push to GitHub, then check workflow progress with `gh run list --limit 5` and `gh run watch <run-id>`. The release workflow currently triggers on `v*` tag pushes and `repository_dispatch` events, so a plain branch push may not start a run.
+This repository is verified through GitHub Actions rather than local Gradle. Before tagging, ensure `gradle.properties` manually sets `rust_libs_version` to the latest `birchtree2/ktv-casting` release. Push commits, create and push a `v*` tag, then monitor with `gh run list --limit 5` and `gh run watch <run-id>`. Plain branch pushes may not start a run.
 
 ## Commit & Pull Request Guidelines
 
 Commit history uses Conventional Commit-style prefixes: `feat:`, `fix:`, and `chore:`. Keep subjects concise; Chinese or English is acceptable.
 
-Pull requests should include a short summary, testing performed, and any device/Android version used. Include screenshots or screen recordings for visible Compose UI changes. Mention changes to Rust `.so` artifacts, ABI coverage, update-check behavior, or release packaging explicitly.
+Pull requests should include a summary, testing performed, and any device/Android version used. Include screenshots for visible Compose UI changes. Mention Rust `.so`, ABI, update-check, or release packaging changes explicitly.
 
 ## Security & Configuration Tips
 
