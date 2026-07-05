@@ -1,6 +1,5 @@
 package zju.bangdream.ktv.casting.ui.components
 
-import android.util.Log
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -9,6 +8,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +18,7 @@ import zju.bangdream.ktv.casting.RustEngine
 import kotlin.concurrent.thread
 
 private const val VOLUME_STEP = 5
+private val VolumeStepButtonSize = 56.dp
 
 @Composable
 fun VolumeControlGroup(castMode: String = "dlna") {
@@ -30,62 +31,34 @@ fun VolumeControlGroup(castMode: String = "dlna") {
 
 /**
  * B站投屏没有绝对音量接口，只能发送设备原生的相对“音量+/-”指令，
- * 也没有读回当前音量的方式。滑条保留只是为了和 DLNA 模式布局对应，
- * 固定为灰色静止状态，不可拖动。
+ * 也没有读回当前音量的方式，因此不展示会被误解为可拖动的音量条。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BilibiliVolumeControl() {
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Text(text = "设备音量（仅支持相对调节）", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+        Text(text = "设备音量（小电视模式）", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
         Row(
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier.fillMaxWidth().height(64.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            IconButton(onClick = { thread { RustEngine.volumeDown(VOLUME_STEP) } }) {
-                Text("-", style = MaterialTheme.typography.titleMedium)
-            }
+            VolumeStepButton(label = "-", onClick = { thread { RustEngine.volumeDown(VOLUME_STEP) } })
 
-            // 没有真实音量可读回，滑条固定为灰色静止状态，仅用于和 DLNA 模式的布局对应
-            Slider(
-                value = 50f,
-                onValueChange = {},
-                enabled = false,
-                valueRange = 0f..100f,
+            Surface(
                 modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(
-                    disabledThumbColor = Color.Gray,
-                    disabledActiveTrackColor = Color.Gray,
-                    disabledInactiveTrackColor = Color.Gray.copy(alpha = 0.3f)
-                ),
-                thumb = {
-                    SliderDefaults.Thumb(
-                        interactionSource = remember { MutableInteractionSource() },
-                        modifier = Modifier
-                            .size(10.dp)
-                            .offset(y = 2.5.dp),
-                        thumbSize = DpSize(10.dp, 10.dp),
-                        colors = SliderDefaults.colors(disabledThumbColor = Color.Gray),
-                        enabled = false
-                    )
-                },
-                track = { sliderState ->
-                    SliderDefaults.Track(
-                        sliderState = sliderState,
-                        modifier = Modifier.height(2.dp),
-                        enabled = false,
-                        colors = SliderDefaults.colors(
-                            disabledActiveTrackColor = Color.Gray,
-                            disabledInactiveTrackColor = Color.Gray.copy(alpha = 0.3f)
-                        )
-                    )
-                }
-            )
-
-            IconButton(onClick = { thread { RustEngine.volumeUp(VOLUME_STEP) } }) {
-                Text("+", style = MaterialTheme.typography.titleMedium)
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = "使用两侧 - / + 调节",
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
             }
+
+            VolumeStepButton(label = "+", onClick = { thread { RustEngine.volumeUp(VOLUME_STEP) } })
         }
     }
 }
@@ -130,13 +103,11 @@ private fun DlnaVolumeControl() {
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier.fillMaxWidth().height(64.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            IconButton(onClick = { commitVolume(volumeValue - 5) }) {
-                Text("-", style = MaterialTheme.typography.titleMedium)
-            }
+            VolumeStepButton(label = "-", onClick = { commitVolume(volumeValue - VOLUME_STEP) })
 
             Slider(
                 value = volumeValue.toFloat(),
@@ -165,9 +136,22 @@ private fun DlnaVolumeControl() {
                 }
             )
 
-            IconButton(onClick = { commitVolume(volumeValue + 5) }) {
-                Text("+", style = MaterialTheme.typography.titleMedium)
-            }
+            VolumeStepButton(label = "+", onClick = { commitVolume(volumeValue + VOLUME_STEP) })
         }
+    }
+}
+
+@Composable
+private fun VolumeStepButton(label: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.size(VolumeStepButtonSize),
+        contentPadding = PaddingValues(0.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
