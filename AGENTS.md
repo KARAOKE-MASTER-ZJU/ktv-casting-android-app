@@ -26,7 +26,7 @@ Use 4-space indentation for Kotlin and Gradle Kotlin DSL files. Keep dependency 
 
 Use JUnit 4 in `app/src/test/java`. Use AndroidX Test, Espresso, and Compose UI tests in `app/src/androidTest/java`. Name tests after behavior, such as `queueEmpty_disablesNextButton`.
 
-This repository is verified through GitHub Actions rather than local Gradle. Before tagging, ensure `gradle.properties` manually sets `rust_libs_version` to the latest `birchtree2/ktv-casting` release. Push commits, create and push a `v*` tag, then monitor with `gh run list --limit 5` and `gh run watch <run-id>`. Plain branch pushes may not start a run.
+This repository is verified through GitHub Actions rather than local Gradle. Before tagging, ensure `gradle.properties` manually sets `rust_libs_version` to the latest `birchtree2/ktv-casting` release. Release tags must follow Semantic Versioning in `vMAJOR.MINOR.PATCH` form, for example `v1.6.9`. Push commits, create and push a `v*` tag, then monitor with `gh run list --limit 5` and `gh run watch <run-id>`. Plain branch pushes may not start a run.
 
 ## Commit & Pull Request Guidelines
 

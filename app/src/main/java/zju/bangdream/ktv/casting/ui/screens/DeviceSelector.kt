@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import zju.bangdream.ktv.casting.DlnaDeviceItem
@@ -30,6 +31,7 @@ fun DeviceSelectorScreen(
     onBilibiliMode: (baseUrl: String, roomId: String) -> Unit,
 ) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val prefs = remember { context.getSharedPreferences("ktv_settings", Context.MODE_PRIVATE) }
 
     var baseUrl by remember { mutableStateOf(prefs.getString("base_url", "https://ktv.starfreedomx.top") ?: "") }
@@ -70,6 +72,13 @@ fun DeviceSelectorScreen(
         Spacer(modifier = Modifier.height(4.dp))
         Text("填写房间信息后选择投屏方式", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.secondary)
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = { uriHandler.openUri("https://jcntv1iqoo5s.feishu.cn/wiki/Ytt1wNh88i6E9jkEndhcxNmYnBd") },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("使用帮助")
+        }
         Spacer(modifier = Modifier.height(16.dp))
 
         // ── 房间信息 ─────────────────────────────────────────────────────
