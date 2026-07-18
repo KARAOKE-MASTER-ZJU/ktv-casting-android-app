@@ -36,10 +36,11 @@ object RustEngine {
     external fun searchDevices(): Array<DlnaDeviceItem>
 
     /**
-     * 通过设备描述XML的URL直接获取设备，适用于WiFi不支持多播的场景。
-     * 例如 B站小电视默认地址：http://192.168.x.x:9958/bilibili/description.xml
-     * @param url 设备描述XML完整地址
-     * @return 成功返回含一个元素的数组，失败返回空数组
+     * 通过设备描述 XML 的 URL 直接获取设备（适用于 WiFi 不支持多播的场景）
+     * 例如：http://192.168.1.x:9958/bilibili/description.xml
+     *
+     * @param url 设备的 XML 描述地址
+     * @return 成功返回包含一个元素的设备数组，失败返回空数组
      */
     external fun searchDeviceByUrl(url: String): Array<DlnaDeviceItem>
 
