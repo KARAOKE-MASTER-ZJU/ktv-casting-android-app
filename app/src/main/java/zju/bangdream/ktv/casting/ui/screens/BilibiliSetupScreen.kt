@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.google.zxing.BarcodeFormat
@@ -28,31 +28,26 @@ import com.google.zxing.MultiFormatWriter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import zju.bangdream.ktv.casting.BilibiliDevice
 import zju.bangdream.ktv.casting.RustEngine
-
-data class BilibiliDevice(val name: String, val brand: String, val model: String, val buvid: String)
-
-private fun parseBilibiliDevices(json: String): List<BilibiliDevice> {
-    return try {
-        val arr = org.json.JSONArray(json)
-        (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            BilibiliDevice(o.optString("name"), o.optString("brand"), o.optString("model"), o.optString("buvid"))
-        }
-    } catch (_: Exception) { emptyList() }
-}
+import zju.bangdream.ktv.casting.parseBilibiliDevices
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.set
+import androidx.core.content.edit
 
 private fun createQrBitmap(content: String): Bitmap? {
     return try {
         val size = 400
         val hints = mapOf(EncodeHintType.MARGIN to 1)
         val bits = MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, size, size, hints)
-        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val bmp = createBitmap(size, size)
         for (x in 0 until size) for (y in 0 until size) {
-            bmp.setPixel(x, y, if (bits[x, y]) GColor.BLACK else GColor.WHITE)
+            bmp[x, y] = if (bits[x, y]) GColor.BLACK else GColor.WHITE
         }
         bmp
-    } catch (_: Exception) { null }
+    } catch (_: Exception) {
+        null
+    }
 }
 
 @Composable
@@ -109,12 +104,16 @@ fun BilibiliSetupScreen(
                         statusText = "请用 B 站 App 扫描上方二维码"
                     }
                 }
+
                 1 -> {
                     val json = withContext(Dispatchers.IO) { RustEngine.getBilibiliSessionJson() }
-                    if (json.isNotEmpty()) prefs.edit().putString("bilibili_session", json).apply()
+                    if (json.isNotEmpty()) prefs.edit { putString("bilibili_session", json) }
                     break
                 }
-                -1 -> { statusText = "二维码已过期，请重新获取"; break }
+
+                -1 -> {
+                    statusText = "二维码已过期，请重新获取"; break
+                }
             }
         }
     }
@@ -127,22 +126,27 @@ fun BilibiliSetupScreen(
             val json = withContext(Dispatchers.IO) { RustEngine.listBilibiliDevices() }
             val parsed = parseBilibiliDevices(json)
             devices = parsed
-            if (parsed.isEmpty()) devicesError = "未找到在线投屏设备\n请先在哔哩哔哩小电视 App 上扫码登录同一账号，然后点击刷新"
+            if (parsed.isEmpty()) devicesError =
+                "未找到在线投屏设备\n请先在哔哩哔哩小电视 App 上扫码登录同一账号，然后点击刷新"
             isLoadingDevices = false
         }
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // 顶部导航栏
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
             }
             Text("哔哩哔哩云投屏", style = MaterialTheme.typography.titleLarge)
         }
@@ -163,8 +167,8 @@ fun BilibiliSetupScreen(
                     )
                     Text(
                         text = "本应用仅使用登录凭证（access_token）控制您所选设备的投屏播放，" +
-                               "不会读取您的观看记录、个人资料或任何隐私信息。" +
-                               "登录凭证仅保存在您的手机本地，不会上传至任何第三方服务器。",
+                                "不会读取您的观看记录、个人资料或任何隐私信息。" +
+                                "登录凭证仅保存在您的手机本地，不会上传至任何第三方服务器。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
@@ -184,12 +188,19 @@ fun BilibiliSetupScreen(
                     qrBitmap != null -> Image(
                         bitmap = qrBitmap!!.asImageBitmap(),
                         contentDescription = "登录二维码",
-                        modifier = Modifier.fillMaxSize()
-                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outline,
+                                RoundedCornerShape(8.dp)
+                            )
                     )
+
                     loginStatus == -1 -> {
                         // expired, handled below
                     }
+
                     else -> CircularProgressIndicator()
                 }
             }
@@ -200,7 +211,7 @@ fun BilibiliSetupScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = if (loginStatus == -1) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface
             )
 
             if (loginStatus == -1) {
@@ -240,10 +251,13 @@ fun BilibiliSetupScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedButton(onClick = { refreshDevicesKey++ }) { Text("刷新设备列表") }
                 }
+
                 else -> LazyColumn(modifier = Modifier.weight(1f)) {
                     items(devices) { device ->
                         Card(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
                                 .clickable { onDeviceSelected(device.buvid, device.name) },
                             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                         ) {

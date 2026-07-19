@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -70,11 +69,6 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("后台运行设置") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
-                },
                 actions = {
                     IconButton(onClick = {
                         isIgnoringBattery = checkBatteryOptimizations(context)
@@ -102,7 +96,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
+                        alpha = 0.5f
+                    )
+                )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -112,7 +110,10 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
                     ) {
                         Text(text = "1. 通知权限", style = MaterialTheme.typography.titleMedium)
                         Badge(containerColor = if (isNotificationEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) {
-                            Text(if (isNotificationEnabled) "已允许" else "未允许", color = MaterialTheme.colorScheme.onPrimary)
+                            Text(
+                                if (isNotificationEnabled) "已允许" else "未允许",
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
                         }
                     }
                     Text(
@@ -131,7 +132,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
+                        alpha = 0.5f
+                    )
+                )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -141,7 +146,10 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
                     ) {
                         Text(text = "2. 忽略电池优化", style = MaterialTheme.typography.titleMedium)
                         Badge(containerColor = if (isIgnoringBattery) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) {
-                            Text(if (isIgnoringBattery) "已允许" else "未允许", color = MaterialTheme.colorScheme.onPrimary)
+                            Text(
+                                if (isIgnoringBattery) "已允许" else "未允许",
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
                         }
                     }
                     Text(
@@ -165,7 +173,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
+                        alpha = 0.5f
+                    )
+                )
             ) {
                 Row(
                     modifier = Modifier
@@ -187,7 +199,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
+                        alpha = 0.5f
+                    )
+                )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -256,7 +272,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
             ) {
                 Text(
                     text = "有些安卓设备制造商不遵守后台应用程序的标准行为，根据你的设备品牌，你可能需要执行额外的配置。\n" +
-                        "请参阅以下网站，了解有关该问题的更多信息，以及如何提高权限的稳定性：",
+                            "请参阅以下网站，了解有关该问题的更多信息，以及如何提高权限的稳定性：",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -267,7 +283,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
                     onClick = { uriHandler.openUri("https://dontkillmyapp.com/") },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                 ) {
-                    Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Don't kill my app")
                 }
@@ -306,7 +326,10 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
                     val versionName = remember {
                         try {
-                            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                            context.packageManager.getPackageInfo(
+                                context.packageName,
+                                0
+                            ).versionName
                         } catch (e: Exception) {
                             "1.0.0"
                         }
@@ -544,6 +567,7 @@ private fun openNotificationSettings(context: Context) {
                     action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
                     putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
                 }
+
                 else -> {
                     action = "android.settings.APP_NOTIFICATION_SETTINGS"
                     putExtra("app_package", context.packageName)
