@@ -1,63 +1,107 @@
 package zju.bangdream.ktv.casting.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import zju.bangdream.ktv.casting.BilibiliDevice
 import zju.bangdream.ktv.casting.CastingService
 import zju.bangdream.ktv.casting.DlnaDeviceItem
 import zju.bangdream.ktv.casting.RustEngine
+import zju.bangdream.ktv.casting.parseBilibiliDevices
+import org.json.JSONArray
+import zju.bangdream.ktv.casting.ui.components.BilibiliExtraControls
 import zju.bangdream.ktv.casting.ui.components.VolumeControlGroup
 import kotlin.concurrent.thread
+import androidx.core.net.toUri
 
 @Composable
 fun CastingControlScreen(
-    device: DlnaDeviceItem,
+    deviceName: String,
     roomId: Long,
     baseUrl: String,
-    onStop: () -> Unit,
-    onChangeSettings: (String, Long) -> Unit,
-    onChangeDevice: (DlnaDeviceItem) -> Unit
+    onReset: () -> Unit,
+    onChangeSettings: (newBaseUrl: String, newRoomId: Long) -> Unit = { _, _ -> },
+    onChangeDevice: (newDevice: DlnaDeviceItem) -> Unit = {},
+    onChangeToBilibiliDevice: (buvid: String, name: String) -> Unit = { _, _ -> },
 ) {
     val progressState by CastingService.playbackProgress.collectAsState()
     val (currentSec, totalSec) = progressState
+
     val songTitle by CastingService.currentSongTitle.collectAsState()
+    val castMode by CastingService.castMode.collectAsState()
 
     var isPlaying by remember { mutableStateOf(true) }
+    var isSwitchingSong by remember { mutableStateOf(false) }
+    var switchingFromTitle by remember { mutableStateOf("") }
+    var queuedCount by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(songTitle) {
+        if (songTitle != "正在加载..." && songTitle != "暂无歌曲" && songTitle != "已停止") {
+            isPlaying = true
+        }
+        if (isSwitchingSong && songTitle != switchingFromTitle) {
+            isSwitchingSong = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            queuedCount = RustEngine.getQueuedSongsCount()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
 
     CastingControlContent(
-        deviceName = device.name,
+        deviceName = deviceName,
         roomId = roomId,
         baseUrl = baseUrl,
         songTitle = songTitle,
+        castMode = castMode,
         currentSec = currentSec,
         totalSec = totalSec,
         isPlaying = isPlaying,
+        isSwitchingSong = isSwitchingSong,
+        queuedCount = queuedCount,
         onTogglePause = {
             val result = RustEngine.togglePause()
-            isPlaying = (result == 1)
+            if (result == 0 || result == 1) {
+                isPlaying = (result == 1)
+            }
         },
-        onNext = { RustEngine.nextSong() },
+        onNext = {
+            switchingFromTitle = songTitle
+            isSwitchingSong = true
+            isPlaying = true
+            RustEngine.nextSong()
+        },
         onSeek = { target ->
             thread { RustEngine.jumpToSecs(target) }
         },
-        onStop = onStop,
+        onReset = {
+            CastingService.resetProgress()
+            onReset()
+        },
         onChangeSettings = onChangeSettings,
-        onChangeDevice = onChangeDevice
+        onChangeDevice = onChangeDevice,
+        onChangeToBilibiliDevice = onChangeToBilibiliDevice,
     )
 }
 
@@ -66,155 +110,269 @@ fun CastingControlScreen(
 fun CastingControlContent(
     deviceName: String,
     roomId: Long,
-    baseUrl: String,
+    baseUrl: String = "",
     songTitle: String,
+    castMode: String = "dlna",
     currentSec: Long,
     totalSec: Long,
     isPlaying: Boolean,
+    isSwitchingSong: Boolean = false,
+    queuedCount: Int = 0,
     onTogglePause: () -> Unit,
     onNext: () -> Unit,
     onSeek: (Int) -> Unit,
-    onStop: () -> Unit,
-    onChangeSettings: (String, Long) -> Unit,
-    onChangeDevice: (DlnaDeviceItem) -> Unit
+    onReset: () -> Unit,
+    onChangeSettings: (newBaseUrl: String, newRoomId: Long) -> Unit = { _, _ -> },
+    onChangeDevice: (newDevice: DlnaDeviceItem) -> Unit = {},
+    onChangeToBilibiliDevice: (buvid: String, name: String) -> Unit = { _, _ -> },
 ) {
+    val context = LocalContext.current
     var isDraggingProgress by remember { mutableStateOf(false) }
     var dragProgressValue by remember { mutableFloatStateOf(0f) }
-    var showStopDialog by remember { mutableStateOf(false) }
-    var showSettingsDialog by remember { mutableStateOf(false) }
-    var showDeviceDialog by remember { mutableStateOf(false) }
-    
+    var showResetDialog by remember { mutableStateOf(false) }
     val displaySec = if (isDraggingProgress) dragProgressValue.toLong() else currentSec
     val totalProgress = if (totalSec > 0) totalSec.toFloat() else 100f
 
-    if (showStopDialog) {
+    if (showResetDialog) {
         AlertDialog(
-            onDismissRequest = { showStopDialog = false },
+            onDismissRequest = { showResetDialog = false }, // 点击弹窗外部关闭
             title = { Text(text = "停止投屏") },
-            text = { Text(text = "确定要停止当前投屏吗？") },
+            text = { Text(text = "确定要停止当前投屏并更换设备吗？这将会中断播放。") },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showStopDialog = false
-                        onStop()
+                        showResetDialog = false
+                        onReset()
                     }
                 ) {
                     Text("确定", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showStopDialog = false }) {
+                TextButton(onClick = { showResetDialog = false }) {
                     Text("取消")
                 }
             }
         )
     }
 
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    var showDeviceDialog by remember { mutableStateOf(false) }
+
+    // 修改设置（网址+房间号）对话框
     if (showSettingsDialog) {
         var newBaseUrl by remember { mutableStateOf(baseUrl) }
         var newRoomId by remember { mutableStateOf(roomId.toString()) }
         AlertDialog(
             onDismissRequest = { showSettingsDialog = false },
-            title = { Text("更换房间设置") },
+            title = { Text("修改连接设置") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = newBaseUrl,
                         onValueChange = { newBaseUrl = it },
                         label = { Text("服务器网址") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = newRoomId,
                         onValueChange = { newRoomId = it },
                         label = { Text("房间号") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val id = newRoomId.toLongOrNull()
-                    if (id != null) {
-                        showSettingsDialog = false
-                        onChangeSettings(newBaseUrl, id)
-                    }
-                }) {
-                    Text("确定")
-                }
+                    showSettingsDialog = false
+                    onChangeSettings(newBaseUrl, newRoomId.toLongOrNull() ?: 0L)
+                }) { Text("确定") }
             },
             dismissButton = {
-                TextButton(onClick = { showSettingsDialog = false }) {
-                    Text("取消")
-                }
+                TextButton(onClick = { showSettingsDialog = false }) { Text("取消") }
             }
         )
     }
 
+    // 更换设备对话框
     if (showDeviceDialog) {
-        var deviceList by remember { mutableStateOf(emptyArray<DlnaDeviceItem>()) }
-        var isSearching by remember { mutableStateOf(false) }
-        var hasSearched by remember { mutableStateOf(false) }
-
+        var selectedTab by remember { mutableIntStateOf(0) } // 0=DLNA, 1=B站
+        var dlnaDeviceList by remember { mutableStateOf(emptyArray<DlnaDeviceItem>()) }
+        var dlnaSearching by remember { mutableStateOf(false) }
+        var bilibiliDeviceList by remember { mutableStateOf<List<BilibiliDevice>>(emptyList()) }
+        var bilibiliLoading by remember { mutableStateOf(false) }
+        var bilibiliError by remember { mutableStateOf<String?>(null) }
+        var showManualInput by remember { mutableStateOf(false) }
+        var manualUrl by remember { mutableStateOf("") }
+        var manualConnecting by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { showDeviceDialog = false },
-            title = { 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("更换投屏设备")
-                    if (isSearching) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    }
-                }
-            },
+            title = { Text("选择投屏设备") },
             text = {
                 Column {
-                    Button(
-                        onClick = {
-                            isSearching = true
-                            hasSearched = true
-                            thread {
-                                val results = RustEngine.searchDevices()
-                                deviceList = results
-                                isSearching = false
-                            }
-                        },
+                    // Tab 切换
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !isSearching,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.Search, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (isSearching) "正在搜索..." else "搜索可用设备")
+                        FilterChip(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            label = { Text("DLNA 设备") },
+                            modifier = Modifier.weight(1f)
+                        )
+                        FilterChip(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            label = { Text("B站 设备") },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Box(modifier = Modifier.heightIn(max = 240.dp)) {
-                        if (deviceList.isEmpty() && !isSearching && hasSearched) {
-                            Text("未找到可用设备", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
-                        } else if (!hasSearched) {
-                            Text("请点击上方按钮开始搜索设备", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                    if (selectedTab == 0) {
+                        // DLNA 设备搜索
+                        Button(
+                            onClick = {
+                                dlnaSearching = true
+                                thread {
+                                    dlnaDeviceList = RustEngine.searchDevices()
+                                    dlnaSearching = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !dlnaSearching
+                        ) {
+                            Text(if (dlnaSearching) "正在搜索..." else "搜索 DLNA 设备")
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (dlnaSearching) {
+                            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
                         } else {
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(deviceList) { device ->
-                                    Card(
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                        ),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                showDeviceDialog = false
-                                                onChangeDevice(device)
-                                            }
-                                    ) {
-                                        ListItem(
-                                            headlineContent = { Text(device.name) },
-                                            supportingContent = { Text(device.location) },
-                                            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                            dlnaDeviceList.forEach { device ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .clickable {
+                                            onChangeDevice(device)
+                                            showDeviceDialog = false
+                                        },
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            device.name,
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                        Text(
+                                            device.location,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        // 手动输入描述文件地址
+                        if (showManualInput) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = manualUrl,
+                                onValueChange = { manualUrl = it },
+                                label = { Text("描述文件完整地址") },
+                                placeholder = { Text("http://设备IP:端口/路径") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "常见默认地址：\n• bilibili 小电视：http://设备IP:9958/bilibili/description.xml\n• Kodi：http://设备IP:1432/ 或 http://设备IP:1743/DeviceDescription.xml",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    val trimmed = manualUrl.trim()
+                                    val url =
+                                        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) trimmed
+                                        else "http://$trimmed"
+                                    manualConnecting = true
+                                    thread {
+                                        val results = RustEngine.searchDeviceByUrl(url)
+                                        dlnaDeviceList = results
+                                        manualConnecting = false
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !manualConnecting && manualUrl.isNotBlank()
+                            ) {
+                                Text(if (manualConnecting) "正在连接..." else "直接连接")
+                            }
+                        }
+                    } else {
+                        // B站 设备搜索
+                        Button(
+                            onClick = {
+                                bilibiliLoading = true
+                                bilibiliError = null
+                                thread {
+                                    val json = RustEngine.listBilibiliDevices()
+                                    bilibiliDeviceList = parseBilibiliDevices(json)
+                                    bilibiliLoading = false
+                                    if (bilibiliDeviceList.isEmpty()) {
+                                        bilibiliError =
+                                            "未找到在线 B站 投屏设备\n请确认已在被投屏设备上登录 B站 同一账号"
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !bilibiliLoading
+                        ) {
+                            Text(if (bilibiliLoading) "查询中..." else "刷新 B站 设备列表")
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        bilibiliError?.let {
+                            Text(
+                                it, color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        if (bilibiliLoading) {
+                            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                        } else {
+                            bilibiliDeviceList.forEach { device ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .clickable {
+                                            onChangeToBilibiliDevice(device.buvid, device.name)
+                                            showDeviceDialog = false
+                                        },
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            device.name,
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                        Text(
+                                            "${device.brand} ${device.model}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.secondary
                                         )
                                     }
                                 }
@@ -223,11 +381,15 @@ fun CastingControlContent(
                     }
                 }
             },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showDeviceDialog = false }) {
-                    Text("取消")
+            confirmButton = {
+                if (selectedTab == 0) {
+                    TextButton(onClick = { showManualInput = !showManualInput }) {
+                        Text(if (showManualInput) "收起" else "手动输入地址")
+                    }
                 }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeviceDialog = false }) { Text("取消") }
             }
         )
     }
@@ -241,11 +403,17 @@ fun CastingControlContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
-            Text(text = "正在投屏至", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            // --- 头部设计 ---
+            Text(
+                text = "正在投屏至",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.Gray
+            )
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(
@@ -254,7 +422,7 @@ fun CastingControlContent(
             ) {
                 Surface(
                     color = Color(0xFFEEEEEE),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
                     modifier = Modifier.clickable { showDeviceDialog = true }
                 ) {
                     Row(
@@ -277,7 +445,7 @@ fun CastingControlContent(
                 }
                 Surface(
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
                     modifier = Modifier.clickable { showSettingsDialog = true }
                 ) {
                     Row(
@@ -300,8 +468,9 @@ fun CastingControlContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
+            // 歌曲标题：大字显示
             Text(
                 text = songTitle,
                 style = MaterialTheme.typography.headlineSmall,
@@ -309,8 +478,64 @@ fun CastingControlContent(
                 maxLines = 2
             )
 
-            Spacer(modifier = Modifier.height(48.dp))
+            if (songTitle == "暂无歌曲") {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "可尝试点击「下一首」，或去网页端确认是否已点歌",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            } else if (queuedCount == 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "队列已空，请去点歌",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            } else if (queuedCount > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "队列中还有 $queuedCount 首歌",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
 
+            AnimatedVisibility(
+                visible = isSwitchingSong,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Surface(
+                    modifier = Modifier.padding(top = 12.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            text = "切歌中...",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // --- 进度控制区 ---
             Slider(
                 value = displaySec.toFloat().coerceIn(0f, totalProgress),
                 onValueChange = {
@@ -322,32 +547,40 @@ fun CastingControlContent(
                     isDraggingProgress = false
                 },
                 valueRange = 0f..totalProgress,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth(),
                 thumb = {
                     SliderDefaults.Thumb(
                         interactionSource = remember { MutableInteractionSource() },
                         modifier = Modifier
-                            .size(10.dp)
-                            .offset(y = 2.5.dp),
+                            .size(10.dp) // 声明尺寸
+                            .offset(y = 2.5.dp), // 如果还有极小偏差，用 offset 比 padding 更专业
                         thumbSize = DpSize(10.dp, 10.dp),
                         colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary)
                     )
                 },
                 track = { sliderState ->
-                    SliderDefaults.Track(sliderState = sliderState, modifier = Modifier.height(4.dp), drawStopIndicator = null)
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        modifier = Modifier.height(4.dp),
+                        drawStopIndicator = null
+                    )
                 }
             )
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(text = formatTime(displaySec), style = MaterialTheme.typography.bodySmall)
                 Text(text = formatTime(totalSec), style = MaterialTheme.typography.bodySmall)
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
+            // --- 主控按钮区 ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -356,7 +589,9 @@ fun CastingControlContent(
                     onClick = onTogglePause,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isPlaying) MaterialTheme.colorScheme.primary else Color(0xFF555555)
+                        containerColor = if (isPlaying) MaterialTheme.colorScheme.primary else Color(
+                            0xFF555555
+                        )
                     )
                 ) {
                     Text(if (isPlaying) "暂停" else "播放")
@@ -364,34 +599,82 @@ fun CastingControlContent(
 
                 Button(
                     onClick = onNext,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    enabled = queuedCount != 0
                 ) {
                     Text("下一首")
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            VolumeControlGroup()
+            if (baseUrl.isNotEmpty()) {
+                val songUrl = baseUrl.trimEnd('/') + "/room?roomId=$roomId"
+                OutlinedButton(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, songUrl.toUri())
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("去点歌")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // --- 音量控制区 (引入外部组件) ---
+            VolumeControlGroup(castMode = castMode)
+
+            if (castMode == "bilibili") {
+                Spacer(modifier = Modifier.height(12.dp))
+                BilibiliExtraControls()
+            }
 
             Spacer(modifier = Modifier.weight(1f))
 
+            // 退出/重置
             OutlinedButton(
-                onClick = { showStopDialog = true },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                onClick = { showResetDialog = true },
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text("停止投屏")
+                Text("更换设备 / 停止投屏")
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
+/**
+ * 时间格式化工具 (00:00)
+ */
 private fun formatTime(seconds: Long): String {
     if (seconds < 0) return "00:00"
     val m = seconds / 60
     val s = seconds % 60
     return "%02d:%02d".format(m, s)
+}
+
+/**
+ * Android Studio 预览专用函数
+ */
+@Preview(showBackground = true, name = "Casting Control - Normal")
+@Composable
+fun CastingControlPreview() {
+    MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFFFF3377))) {
+        CastingControlContent(
+            deviceName = "Preview Device",
+            roomId = 8888,
+            castMode = "dlna",
+            currentSec = 45,
+            totalSec = 210,
+            isPlaying = true,
+            onTogglePause = {},
+            onNext = {},
+            onSeek = {},
+            onReset = {},
+            songTitle = "八月のif - Poppin'Party"
+        )
+    }
 }

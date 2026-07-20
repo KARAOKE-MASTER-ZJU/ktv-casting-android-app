@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.BackHandler
 import zju.bangdream.ktv.casting.LogItem
 import zju.bangdream.ktv.casting.LogLevel
 import zju.bangdream.ktv.casting.LogRepository
@@ -25,6 +26,8 @@ import zju.bangdream.ktv.casting.LogRepository
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LogScreen(onBack: () -> Unit) {
+    BackHandler { onBack() }
+
     val logs by LogRepository.logs.collectAsState()
     val listState = rememberLazyListState()
     val clipboard = LocalClipboardManager.current

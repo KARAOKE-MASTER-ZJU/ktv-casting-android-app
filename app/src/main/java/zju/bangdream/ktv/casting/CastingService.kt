@@ -22,6 +22,14 @@ class CastingService : Service() {
         private val _currentSongTitle = MutableStateFlow("正在加载...")
         val currentSongTitle = _currentSongTitle.asStateFlow()
 
+        // 投屏模式状态流
+        private val _castMode = MutableStateFlow("dlna")
+        val castMode = _castMode.asStateFlow()
+
+        fun setCastMode(mode: String) {
+            _castMode.value = mode
+        }
+
         fun resetProgress() {
             _playbackProgress.value = Pair(0L, 0L)
             _currentSongTitle.value = "已停止"
@@ -33,24 +41,28 @@ class CastingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val baseUrl = intent?.getStringExtra("base_url") ?: ""
         val roomId = intent?.getLongExtra("room_id", 1111L) ?: 1111L
+        val mode = intent?.getStringExtra("mode") ?: "dlna"
         val location = intent?.getStringExtra("location") ?: ""
+        val buvid = intent?.getStringExtra("buvid") ?: ""
+
+        // 存储投屏模式，供UI层读取
+        setCastMode(mode)
 
         // 1. 准备通知栏
         val notification = createNotification("准备投屏...")
 
-        // 根据 Android 版本启动前台服务
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
-            startForeground(
-                1,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(1, notification)
         }
 
         // 2. 初始化 Rust 引擎
-        RustEngine.startEngine(baseUrl, roomId.toString(), location)
+        if (mode == "bilibili") {
+            RustEngine.startBilibiliEngine(baseUrl, roomId.toString(), buvid)
+        } else {
+            RustEngine.startEngine(baseUrl, roomId.toString(), location)
+        }
 
         // 3. 开启轮询逻辑
         startCommanderLoop()
@@ -68,13 +80,16 @@ class CastingService : Service() {
                 if (progress.size < 2) continue
 
                 val current = progress[0].toLong()
-                val total = progress[1].toLong() // 直接取原始值，包含 10 小时 (36000s)
+                val total = progress[1].toLong()
 
 
                 val title = RustEngine.getCurrentSongTitle() // 获取 Rust 层存储的标题
 
                 _playbackProgress.value = Pair(current, total)
-                _currentSongTitle.value = title
+                // 有进度时不用"暂无歌曲"覆盖已知标题（bilibili 服务器 singing 字段可能提前清空）
+                if (title != "暂无歌曲" || total <= 0) {
+                    _currentSongTitle.value = title
+                }
 
                 if (current >= 0 && total > 0) {
                     // 通知栏现在显示：[歌名] 进度
@@ -82,7 +97,7 @@ class CastingService : Service() {
 
                     if (total - current <= 2 && current > 5) {
                         RustEngine.nextSong()
-                        delay(5000)
+                        delay(1000)
                     }
                 } else {
                     updateNotification("当前播放: $title")

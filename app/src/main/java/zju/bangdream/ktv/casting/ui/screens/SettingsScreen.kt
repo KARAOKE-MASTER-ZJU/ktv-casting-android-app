@@ -6,11 +6,11 @@ import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -20,13 +20,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
+import zju.bangdream.ktv.casting.BuildConfig
 import zju.bangdream.ktv.casting.R
+import zju.bangdream.ktv.casting.update.UpdateChecker
+import zju.bangdream.ktv.casting.update.UpdateDialog
+import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +49,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
     var isIgnoringBattery by remember { mutableStateOf(checkBatteryOptimizations(context)) }
     var isNotificationEnabled by remember { mutableStateOf(checkNotificationPermission(context)) }
+
+    val scope = rememberCoroutineScope()
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    // null=未检查, ""=已是最新, 其他=错误信息或"发现新版本"提示
+    var updateStatus by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -81,7 +97,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
+                        alpha = 0.5f
+                    )
+                )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -91,7 +111,10 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
                     ) {
                         Text(text = "1. 通知权限", style = MaterialTheme.typography.titleMedium)
                         Badge(containerColor = if (isNotificationEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) {
-                            Text(if (isNotificationEnabled) "已允许" else "未允许", color = MaterialTheme.colorScheme.onPrimary)
+                            Text(
+                                if (isNotificationEnabled) "已允许" else "未允许",
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
                         }
                     }
                     Text(
@@ -110,7 +133,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
+                        alpha = 0.5f
+                    )
+                )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -120,7 +147,10 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
                     ) {
                         Text(text = "2. 忽略电池优化", style = MaterialTheme.typography.titleMedium)
                         Badge(containerColor = if (isIgnoringBattery) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) {
-                            Text(if (isIgnoringBattery) "已允许" else "未允许", color = MaterialTheme.colorScheme.onPrimary)
+                            Text(
+                                if (isIgnoringBattery) "已允许" else "未允许",
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
                         }
                     }
                     Text(
@@ -144,7 +174,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
+                        alpha = 0.5f
+                    )
+                )
             ) {
                 Row(
                     modifier = Modifier
@@ -164,6 +198,73 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
                 }
             }
 
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(
+                        alpha = 0.5f
+                    )
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "检查更新", style = MaterialTheme.typography.titleMedium)
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    isCheckingUpdate = true
+                                    updateStatus = null
+                                    try {
+                                        val checker = UpdateChecker(context)
+                                        val release = checker.fetchLatestRelease()
+                                        if (release == null) {
+                                            updateStatus = "无法获取版本信息，请检查网络连接"
+                                        } else if (checker.shouldUpdate(release)) {
+                                            updateStatus = "发现新版本: ${release.tagName}"
+                                            UpdateDialog.showUpdateDialog(context, release) {
+                                                checker.saveLastCheckTime(release)
+                                            }
+                                        } else {
+                                            updateStatus = "已是最新版本 (${release.tagName})"
+                                        }
+                                    } catch (e: Exception) {
+                                        updateStatus = "检查失败: ${e.message}"
+                                    } finally {
+                                        isCheckingUpdate = false
+                                    }
+                                }
+                            },
+                            enabled = !isCheckingUpdate
+                        ) {
+                            if (isCheckingUpdate) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Text("检查")
+                            }
+                        }
+                    }
+                    updateStatus?.let { status ->
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = status,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (status.startsWith("检查失败") || status.startsWith("无法获取"))
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -172,7 +273,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
             ) {
                 Text(
                     text = "有些安卓设备制造商不遵守后台应用程序的标准行为，根据你的设备品牌，你可能需要执行额外的配置。\n" +
-                        "请参阅以下网站，了解有关该问题的更多信息，以及如何提高权限的稳定性：",
+                            "请参阅以下网站，了解有关该问题的更多信息，以及如何提高权限的稳定性：",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -183,7 +284,11 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
                     onClick = { uriHandler.openUri("https://dontkillmyapp.com/") },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                 ) {
-                    Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Don't kill my app")
                 }
@@ -198,11 +303,9 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 32.dp),
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                )
+                RepoLinksSection(onOpen = uriHandler::openUri)
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
                     modifier = Modifier
@@ -212,7 +315,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        onClick = { uriHandler.openUri("https://github.com/StarFreedomX/ktv-casting/tree/android-app") }
+                        onClick = { uriHandler.openUri("https://github.com/${BuildConfig.GITHUB_REPO_OWNER}/${BuildConfig.GITHUB_REPO_NAME}") }
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_github_logo),
@@ -224,7 +327,10 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
 
                     val versionName = remember {
                         try {
-                            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                            context.packageManager.getPackageInfo(
+                                context.packageName,
+                                0
+                            ).versionName
                         } catch (e: Exception) {
                             "1.0.0"
                         }
@@ -241,6 +347,215 @@ fun SettingsScreen(onBack: () -> Unit, onOpenLogs: () -> Unit) {
     }
 }
 
+private data class RepoInfo(
+    val name: String,
+    val repoUrl: String,
+    val contributorsUrl: String,
+    val owner: String,
+    val repo: String
+)
+
+private data class ContributorInfo(
+    val login: String,
+    val profileUrl: String
+)
+
+private sealed interface ContributorsUiState {
+    data object Loading : ContributorsUiState
+    data class Success(val contributors: List<ContributorInfo>) : ContributorsUiState
+    data object Error : ContributorsUiState
+}
+
+private val contributorsClient: OkHttpClient by lazy {
+    OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .build()
+}
+
+private val projectRepos = listOf(
+    RepoInfo(
+        name = "ktv-casting-android-app",
+        repoUrl = "https://github.com/${BuildConfig.GITHUB_REPO_OWNER}/${BuildConfig.GITHUB_REPO_NAME}",
+        contributorsUrl = "https://github.com/${BuildConfig.GITHUB_REPO_OWNER}/${BuildConfig.GITHUB_REPO_NAME}/graphs/contributors",
+        owner = BuildConfig.GITHUB_REPO_OWNER,
+        repo = "ktv-casting-android-app"
+    ),
+    RepoInfo(
+        name = "ktv-casting",
+        repoUrl = "https://github.com/KARAOKE-MASTER-ZJU/ktv-casting",
+        contributorsUrl = "https://github.com/KARAOKE-MASTER-ZJU/ktv-casting/graphs/contributors",
+        owner = "KARAOKE-MASTER-ZJU",
+        repo = "ktv-casting"
+    )
+)
+
+@Composable
+private fun RepoLinksSection(onOpen: (String) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "项目与贡献者",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        projectRepos.forEach { repo ->
+            RepoContributorsCard(repo = repo, onOpen = onOpen)
+        }
+    }
+}
+
+@Composable
+private fun RepoContributorsCard(
+    repo: RepoInfo,
+    onOpen: (String) -> Unit
+) {
+    var state by remember(repo.owner, repo.repo) {
+        mutableStateOf<ContributorsUiState>(ContributorsUiState.Loading)
+    }
+
+    LaunchedEffect(repo.owner, repo.repo) {
+        state = try {
+            ContributorsUiState.Success(fetchRepoContributors(repo.owner, repo.repo))
+        } catch (_: Exception) {
+            ContributorsUiState.Error
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = repo.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { onOpen(repo.repoUrl) }) {
+                        Text("仓库")
+                    }
+                    TextButton(onClick = { onOpen(repo.contributorsUrl) }) {
+                        Text("贡献者")
+                    }
+                }
+            }
+
+            when (val current = state) {
+                ContributorsUiState.Loading -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            text = "正在加载贡献者…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                ContributorsUiState.Error -> {
+                    Text(
+                        text = "暂时无法加载贡献者列表",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                is ContributorsUiState.Success -> {
+                    ContributorsWrapRow(
+                        contributors = current.contributors,
+                        onOpen = onOpen
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContributorsWrapRow(
+    contributors: List<ContributorInfo>,
+    onOpen: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        contributors.chunked(3).forEach { rowContributors ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowContributors.forEach { contributor ->
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onOpen(contributor.profileUrl) },
+                        shape = MaterialTheme.shapes.small,
+                        tonalElevation = 1.dp,
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        Text(
+                            text = contributor.login,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                repeat(3 - rowContributors.size) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+private suspend fun fetchRepoContributors(owner: String, repo: String): List<ContributorInfo> =
+    withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("https://api.github.com/repos/$owner/$repo/contributors?per_page=30")
+            .addHeader("Accept", "application/vnd.github+json")
+            .addHeader("User-Agent", "KTV-Casting-Android")
+            .build()
+
+        contributorsClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("contributors request failed")
+            val body = response.body?.string() ?: error("empty contributors response")
+            val json = JSONArray(body)
+            buildList {
+                for (index in 0 until json.length()) {
+                    val item = json.getJSONObject(index)
+                    add(
+                        ContributorInfo(
+                            login = item.optString("login", ""),
+                            profileUrl = item.optString("html_url", "")
+                        )
+                    )
+                }
+            }.filter { it.login.isNotBlank() && it.profileUrl.isNotBlank() }
+        }
+    }
+
 private fun checkNotificationPermission(context: Context): Boolean {
     return NotificationManagerCompat.from(context).areNotificationsEnabled()
 }
@@ -253,6 +568,7 @@ private fun openNotificationSettings(context: Context) {
                     action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
                     putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
                 }
+
                 else -> {
                     action = "android.settings.APP_NOTIFICATION_SETTINGS"
                     putExtra("app_package", context.packageName)
