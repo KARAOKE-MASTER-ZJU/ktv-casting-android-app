@@ -15,7 +15,7 @@ repo_owner=你的GitHub用户名
 repo_name=你的仓库名
 ```
 
-未配置时默认使用 `KARAOKE-MASTER-ZJU/ktv-casting-android-app`。
+未配置时默认使用 `KARAOKE-MASTER-ZJU/ktv-casting-android-app`。如果你使用 GitHub Actions 构建，CI 会自动注入当前仓库的 owner/name，无需手动配置 `local.properties`。
 
 应用内更新检查读取 `https://<repo_owner>.github.io/<repo_name>/release.json`，需在仓库 Settings 中启用 GitHub Pages（source 选 `gh-pages` 分支），并配置 CI（见 `.github/workflows/build-and-release.yml` 顶部注释）。
 

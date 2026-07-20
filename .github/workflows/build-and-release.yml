@@ -11,6 +11,8 @@
 #     KEY_PASSWORD         — 密钥密码
 #   Variables（可选）:
 #     CUSTOM_RUST_REPO     — 自定义 Rust .so 下载仓库（默认 KARAOKE-MASTER-ZJU/ktv-casting）
+#     REPO_OWNER           — 自定义 GitHub 仓库 owner（默认取当前仓库 owner）
+#     REPO_NAME            — 自定义 GitHub 仓库名（默认取当前仓库名）
 #
 # 需在仓库 Settings → Pages 中启用 gh-pages 分支，
 # 构建后自动推送 release.json。
@@ -107,6 +109,8 @@ jobs:
       # 5. 执行打包任务
       - name: Build Release APK
         env:
+          REPO_OWNER: ${{ vars.REPO_OWNER || github.repository_owner }}
+          REPO_NAME: ${{ vars.REPO_NAME || github.event.repository.name }}
           STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -117,7 +121,9 @@ jobs:
           -Pandroid.injected.signing.store.password="$STORE_PASSWORD" \
           -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
           -Pandroid.injected.signing.key.password="$KEY_PASSWORD" \
-          -Papp_version_name="${{ env.APP_CODE_VERSION }}"
+          -Papp_version_name="${{ env.APP_CODE_VERSION }}" \
+          -Prepo_owner="$REPO_OWNER" \
+          -Prepo_name="$REPO_NAME"
 
       # 6. 生成更新日志
       - name: Generate Changelog
