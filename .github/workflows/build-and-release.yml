@@ -173,7 +173,22 @@ jobs:
             })
           }' > /tmp/pages/release.json
 
-      # 9. Checkout gh-pages 分支
+      # 9. 确保 gh-pages 分支存在（首次运行自动创建）
+      - name: Ensure gh-pages branch exists
+        run: |
+          if ! git ls-remote --heads origin gh-pages | grep -q gh-pages; then
+            git checkout --orphan gh-pages
+            echo '# GitHub Pages' > README.md
+            echo '{"tag_name":"placeholder","published_at":"2026-01-01T00:00:00Z","body":"","html_url":"","assets":[]}' > release.json
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add README.md release.json
+            git commit -m "Initial GitHub Pages setup"
+            git push origin gh-pages
+            git checkout -
+          fi
+
+      # 10. Checkout gh-pages 分支
       - name: Checkout gh-pages branch
         uses: actions/checkout@v4
         with:
