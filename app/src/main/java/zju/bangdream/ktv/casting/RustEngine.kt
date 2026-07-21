@@ -159,7 +159,9 @@ enum class BiliQuality(val qn: Int, val label: String) {
     P480(32, "480P"),
     P720(64, "720P"),
     P1080(80, "1080P"),
-    P1080P60(116, "1080P60");
+    P1080H(112, "1080PH"),
+    P1080P60(116, "1080P60"),
+    P4K(120, "4K");
 
     companion object {
         val DEFAULT = P1080

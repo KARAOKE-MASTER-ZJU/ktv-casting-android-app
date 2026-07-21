@@ -8,7 +8,7 @@
 
 ## 环境配置
 
-如果你有构建发布的需求，复制 `app/local.properties.example` 为 `app/local.properties`，填写你的仓库信息：
+如果你有本地构建发布的需求，复制 `app/local.properties.example` 为 `app/local.properties`，填写你的仓库信息：
 
 ```properties
 repo_owner=你的GitHub用户名
