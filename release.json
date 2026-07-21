@@ -1,6 +1,6 @@
 {
   "tag_name": "v1.4.1",
-  "published_at": "2026-07-21T19:17:17Z",
+  "published_at": "2026-07-21T19:21:14Z",
   "body": "App 版本: v1.4.1\nRust 引擎版本: v1.8.0\n\n更新内容:\n- feat: 上一首按钮&切歌进度优化\n",
   "html_url": "https://github.com/KARAOKE-MASTER-ZJU/ktv-casting-android-app/releases/tag/v1.4.1",
   "assets": [
