@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import zju.bangdream.ktv.casting.DlnaDeviceItem
 import zju.bangdream.ktv.casting.EnsureRoomResult
 import zju.bangdream.ktv.casting.RoomApi
+import zju.bangdream.ktv.casting.RoomEntryMode
 import zju.bangdream.ktv.casting.RustEngine
 import kotlin.concurrent.thread
 
@@ -48,6 +49,7 @@ fun DeviceSelectorScreen(
         )
     }
     var roomIdStr by remember { mutableStateOf(prefs.getString("room_id", "1111") ?: "") }
+    var roomEntryMode by remember { mutableStateOf(RoomEntryMode.CREATE) }
     var inputError by remember { mutableStateOf<String?>(null) }
     var isPreparingRoom by remember { mutableStateOf(false) }
 
@@ -86,6 +88,7 @@ fun DeviceSelectorScreen(
         if (!validateInputs() || isPreparingRoom) return
         val requestedBaseUrl = baseUrl.trim()
         val requestedRoomId = roomIdStr.trim().toLong().toString()
+        val requestedMode = roomEntryMode
         baseUrl = requestedBaseUrl
         roomIdStr = requestedRoomId
         saveSettings()
@@ -93,7 +96,13 @@ fun DeviceSelectorScreen(
         isPreparingRoom = true
         coroutineScope.launch {
             try {
-                when (val result = RoomApi.ensureRoom(requestedBaseUrl, requestedRoomId)) {
+                when (
+                    val result = RoomApi.enterRoom(
+                        requestedBaseUrl,
+                        requestedRoomId,
+                        requestedMode
+                    )
+                ) {
                     EnsureRoomResult.Success -> onReady(requestedBaseUrl, requestedRoomId)
                     is EnsureRoomResult.Failure -> inputError = result.message
                 }
@@ -148,6 +157,38 @@ fun DeviceSelectorScreen(
                 singleLine = true,
                 isError = inputError != null && roomIdStr.isBlank()
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("房间操作", style = MaterialTheme.typography.labelLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(
+                    selected = roomEntryMode == RoomEntryMode.CREATE,
+                    onClick = {
+                        roomEntryMode = RoomEntryMode.CREATE
+                        inputError = null
+                    },
+                    label = { Text("创建房间") },
+                    enabled = !isPreparingRoom
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                FilterChip(
+                    selected = roomEntryMode == RoomEntryMode.JOIN,
+                    onClick = {
+                        roomEntryMode = RoomEntryMode.JOIN
+                        inputError = null
+                    },
+                    label = { Text("加入房间") },
+                    enabled = !isPreparingRoom
+                )
+            }
+            Text(
+                text = if (roomEntryMode == RoomEntryMode.CREATE) {
+                    "房间号已被占用时不会进入，避免与陌生房间串联"
+                } else {
+                    "仅加入已经由自己或同伴创建的房间"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             inputError?.let {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -164,7 +205,10 @@ fun DeviceSelectorScreen(
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("正在准备房间…", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        if (roomEntryMode == RoomEntryMode.CREATE) "正在创建房间…" else "正在检查房间…",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
 

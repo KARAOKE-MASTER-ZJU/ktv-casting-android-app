@@ -16,6 +16,11 @@ sealed interface EnsureRoomResult {
     data class Failure(val message: String) : EnsureRoomResult
 }
 
+enum class RoomEntryMode {
+    CREATE,
+    JOIN
+}
+
 object RoomApi {
     private val httpClient by lazy {
         OkHttpClient.Builder()
@@ -25,10 +30,14 @@ object RoomApi {
             .build()
     }
 
-    suspend fun ensureRoom(baseUrl: String, roomId: String): EnsureRoomResult =
+    suspend fun enterRoom(
+        baseUrl: String,
+        roomId: String,
+        mode: RoomEntryMode
+    ): EnsureRoomResult =
         withContext(Dispatchers.IO) {
             try {
-                ensureRoomBlocking(baseUrl, roomId)
+                enterRoomBlocking(baseUrl, roomId, mode)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -41,10 +50,21 @@ object RoomApi {
             }
         }
 
-    private fun ensureRoomBlocking(baseUrl: String, roomId: String): EnsureRoomResult {
+    private fun enterRoomBlocking(
+        baseUrl: String,
+        roomId: String,
+        mode: RoomEntryMode
+    ): EnsureRoomResult {
         val serverUrl = baseUrl.trim().trimEnd('/').toHttpUrlOrNull()
             ?: return EnsureRoomResult.Failure("服务器网址格式不正确")
 
+        return when (mode) {
+            RoomEntryMode.CREATE -> createRoom(serverUrl, roomId)
+            RoomEntryMode.JOIN -> joinRoom(serverUrl, roomId)
+        }
+    }
+
+    private fun joinRoom(serverUrl: HttpUrl, roomId: String): EnsureRoomResult {
         val existsRequest = Request.Builder()
             .url(serverUrl.apiUrl("roomExists", roomId))
             .get()
@@ -59,9 +79,15 @@ object RoomApi {
             if (!json.has("exists")) {
                 return EnsureRoomResult.Failure("服务器不支持房间创建接口，请更新服务器")
             }
-            if (json.optBoolean("exists")) return EnsureRoomResult.Success
+            return if (json.optBoolean("exists")) {
+                EnsureRoomResult.Success
+            } else {
+                EnsureRoomResult.Failure("房间不存在，请先创建房间")
+            }
         }
+    }
 
+    private fun createRoom(serverUrl: HttpUrl, roomId: String): EnsureRoomResult {
         val createRequest = Request.Builder()
             .url(serverUrl.apiUrl("createRoom", roomId))
             .post(ByteArray(0).toRequestBody())
@@ -73,10 +99,15 @@ object RoomApi {
             }
             val json = response.body?.string()?.let(::JSONObject)
                 ?: return EnsureRoomResult.Failure("服务器返回了无效的创建结果")
-            if (json.optBoolean("success") || json.optString("msg") == "房间已存在") {
+            if (json.optBoolean("success")) {
                 return EnsureRoomResult.Success
             }
-            return EnsureRoomResult.Failure(json.optString("msg", "创建房间失败"))
+            val message = json.optString("msg", "创建房间失败")
+            return if (message == "房间已存在") {
+                EnsureRoomResult.Failure("房间号已被占用，请更换房间号或选择加入房间")
+            } else {
+                EnsureRoomResult.Failure(message)
+            }
         }
     }
 
