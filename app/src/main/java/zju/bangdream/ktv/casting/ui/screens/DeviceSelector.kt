@@ -15,7 +15,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import zju.bangdream.ktv.casting.DlnaDeviceItem
+import zju.bangdream.ktv.casting.EnsureRoomResult
+import zju.bangdream.ktv.casting.RoomApi
 import zju.bangdream.ktv.casting.RustEngine
 import kotlin.concurrent.thread
 
@@ -33,6 +36,7 @@ fun DeviceSelectorScreen(
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val coroutineScope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences("ktv_settings", Context.MODE_PRIVATE) }
 
     var baseUrl by remember {
@@ -45,6 +49,7 @@ fun DeviceSelectorScreen(
     }
     var roomIdStr by remember { mutableStateOf(prefs.getString("room_id", "1111") ?: "") }
     var inputError by remember { mutableStateOf<String?>(null) }
+    var isPreparingRoom by remember { mutableStateOf(false) }
 
     // DLNA 搜索状态
     var dlnaShowManualInput by remember { mutableStateOf(false) }
@@ -70,8 +75,32 @@ fun DeviceSelectorScreen(
         if (roomIdStr.isBlank()) {
             inputError = "请填写房间号"; return false
         }
+        if (roomIdStr.trim().toLongOrNull() == null) {
+            inputError = "房间号必须是有效数字"; return false
+        }
         inputError = null
         return true
+    }
+
+    fun prepareRoom(onReady: (baseUrl: String, roomId: String) -> Unit) {
+        if (!validateInputs() || isPreparingRoom) return
+        val requestedBaseUrl = baseUrl.trim()
+        val requestedRoomId = roomIdStr.trim().toLong().toString()
+        baseUrl = requestedBaseUrl
+        roomIdStr = requestedRoomId
+        saveSettings()
+        inputError = null
+        isPreparingRoom = true
+        coroutineScope.launch {
+            try {
+                when (val result = RoomApi.ensureRoom(requestedBaseUrl, requestedRoomId)) {
+                    EnsureRoomResult.Success -> onReady(requestedBaseUrl, requestedRoomId)
+                    is EnsureRoomResult.Failure -> inputError = result.message
+                }
+            } finally {
+                isPreparingRoom = false
+            }
+        }
     }
 
     Scaffold(
@@ -126,6 +155,17 @@ fun DeviceSelectorScreen(
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
+            }
+            if (isPreparingRoom) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("正在准备房间…", style = MaterialTheme.typography.bodySmall)
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -260,9 +300,14 @@ fun DeviceSelectorScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 3.dp)
-                            .clickable {
-                                saveSettings()
-                                onDeviceSelect(baseUrl, roomIdStr.toLongOrNull() ?: 0L, device)
+                            .clickable(enabled = !isPreparingRoom) {
+                                prepareRoom { requestedBaseUrl, requestedRoomId ->
+                                    onDeviceSelect(
+                                        requestedBaseUrl,
+                                        requestedRoomId.toLongOrNull() ?: 0L,
+                                        device
+                                    )
+                                }
                             },
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
@@ -283,10 +328,10 @@ fun DeviceSelectorScreen(
             ElevatedCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        if (!validateInputs()) return@clickable
-                        saveSettings()
-                        onBilibiliMode(baseUrl, roomIdStr)
+                    .clickable(enabled = !isPreparingRoom) {
+                        prepareRoom { requestedBaseUrl, requestedRoomId ->
+                            onBilibiliMode(requestedBaseUrl, requestedRoomId)
+                        }
                     }
             ) {
                 Row(
