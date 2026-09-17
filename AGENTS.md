@@ -63,6 +63,9 @@ CI secrets required: `SIGNING_KEY`, `KEY_STORE_PASSWORD`, `ALIAS`, `KEY_PASSWORD
 
 ## Commit & Pull Request Guidelines
 
+- 所有通过 tag 发布的版本（包括 dev/prerelease）都必须更新 GitHub Pages 的统一 `release.json`，供已有 App 检测更新。未经用户要求，不按开发版/正式版拆分更新渠道，也不跳过开发版的 Pages 更新。
+- 功能分支隔离与更新渠道独立是两回事；开房间与 DLNA 优化代码是否合并须按用户要求处理，不要用跳过发布更新来代替代码隔离。
+
 Commit message 必须使用中文，并保持主题简短、准确。可按需使用 `feat:`、`fix:`、`chore:` 等 Conventional Commit 前缀。
 
 Pull requests should include a summary, testing performed, and any device/Android version used. Include screenshots for visible Compose UI changes. Mention Rust `.so`, ABI, update-check, or release packaging changes explicitly.
