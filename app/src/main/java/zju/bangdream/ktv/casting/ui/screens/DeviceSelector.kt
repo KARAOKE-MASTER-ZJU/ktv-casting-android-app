@@ -12,12 +12,26 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import zju.bangdream.ktv.casting.DlnaDeviceItem
+import zju.bangdream.ktv.casting.EnsureRoomResult
+import zju.bangdream.ktv.casting.RoomApi
+import zju.bangdream.ktv.casting.RoomEntryMode
+import zju.bangdream.ktv.casting.RoomExistenceResult
 import zju.bangdream.ktv.casting.RustEngine
 import kotlin.concurrent.thread
+
+private data class ActiveRoom(val baseUrl: String, val roomId: String)
+
+private enum class RoomOperation {
+    CREATE,
+    JOIN,
+    RESTORE
+}
 
 private fun normalizeDeviceUrl(input: String): String {
     val trimmed = input.trim()
@@ -33,6 +47,8 @@ fun DeviceSelectorScreen(
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val prefs = remember { context.getSharedPreferences("ktv_settings", Context.MODE_PRIVATE) }
 
     var baseUrl by remember {
@@ -45,6 +61,9 @@ fun DeviceSelectorScreen(
     }
     var roomIdStr by remember { mutableStateOf(prefs.getString("room_id", "1111") ?: "") }
     var inputError by remember { mutableStateOf<String?>(null) }
+    var activeRoom by remember { mutableStateOf<ActiveRoom?>(null) }
+    var roomOperation by remember { mutableStateOf<RoomOperation?>(null) }
+    val isPreparingRoom = roomOperation != null
 
     // DLNA 搜索状态
     var dlnaShowManualInput by remember { mutableStateOf(false) }
@@ -63,6 +82,24 @@ fun DeviceSelectorScreen(
         }
     }
 
+    fun saveActiveRoom(room: ActiveRoom) {
+        prefs.edit().apply {
+            putString("active_room_base_url", room.baseUrl)
+            putString("active_room_id", room.roomId)
+            apply()
+        }
+        activeRoom = room
+    }
+
+    fun clearActiveRoom() {
+        prefs.edit().apply {
+            remove("active_room_base_url")
+            remove("active_room_id")
+            apply()
+        }
+        activeRoom = null
+    }
+
     fun validateInputs(): Boolean {
         if (baseUrl.isBlank()) {
             inputError = "请填写服务器网址"; return false
@@ -74,7 +111,62 @@ fun DeviceSelectorScreen(
         return true
     }
 
+    fun enterRoom(mode: RoomEntryMode) {
+        if (!validateInputs() || isPreparingRoom) return
+        val requestedBaseUrl = baseUrl.trim()
+        val requestedRoomId = roomIdStr.trim()
+        baseUrl = requestedBaseUrl
+        roomIdStr = requestedRoomId
+        saveSettings()
+        inputError = null
+        roomOperation = if (mode == RoomEntryMode.CREATE) {
+            RoomOperation.CREATE
+        } else {
+            RoomOperation.JOIN
+        }
+        coroutineScope.launch {
+            try {
+                when (val result = RoomApi.enterRoom(requestedBaseUrl, requestedRoomId, mode)) {
+                    EnsureRoomResult.Success -> saveActiveRoom(
+                        ActiveRoom(requestedBaseUrl, requestedRoomId)
+                    )
+                    is EnsureRoomResult.Failure -> {
+                        inputError = result.message
+                        snackbarHostState.showSnackbar(result.message)
+                    }
+                }
+            } finally {
+                roomOperation = null
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val savedBaseUrl = prefs.getString("active_room_base_url", null)?.trim().orEmpty()
+        val savedRoomId = prefs.getString("active_room_id", null)?.trim().orEmpty()
+        if (savedBaseUrl.isEmpty() || savedRoomId.isEmpty()) return@LaunchedEffect
+
+        baseUrl = savedBaseUrl
+        roomIdStr = savedRoomId
+        roomOperation = RoomOperation.RESTORE
+        try {
+            when (val result = RoomApi.checkRoom(savedBaseUrl, roomIdStr)) {
+                RoomExistenceResult.Exists -> saveActiveRoom(ActiveRoom(savedBaseUrl, roomIdStr))
+                RoomExistenceResult.Available -> {
+                    clearActiveRoom()
+                    inputError = "上次使用的房间已失效，请重新创建"
+                }
+                is RoomExistenceResult.Failure -> {
+                    inputError = "无法恢复上次房间：${result.message}"
+                }
+            }
+        } finally {
+            roomOperation = null
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(title = { Text("连接设备") })
         }
@@ -108,6 +200,7 @@ fun DeviceSelectorScreen(
                 label = { Text("服务器网址") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+                enabled = !isPreparingRoom && activeRoom == null,
                 isError = inputError != null && baseUrl.isBlank()
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -117,8 +210,57 @@ fun DeviceSelectorScreen(
                 label = { Text("房间号") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+                enabled = !isPreparingRoom && activeRoom == null,
                 isError = inputError != null && roomIdStr.isBlank()
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            if (activeRoom == null) {
+                Button(
+                    onClick = { enterRoom(RoomEntryMode.CREATE) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isPreparingRoom
+                ) {
+                    Text("创建并使用此房间")
+                }
+                TextButton(
+                    onClick = { enterRoom(RoomEntryMode.JOIN) },
+                    modifier = Modifier.align(Alignment.End),
+                    enabled = !isPreparingRoom
+                ) {
+                    Text("已有房间？加入房间")
+                }
+            } else {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("房间 ${activeRoom!!.roomId} 已就绪")
+                            Text(
+                                "选择下方投屏方式即可开始",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                clearActiveRoom()
+                                inputError = null
+                            }
+                        ) {
+                            Text("切换房间")
+                        }
+                    }
+                }
+            }
             inputError?.let {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -127,13 +269,43 @@ fun DeviceSelectorScreen(
                     style = MaterialTheme.typography.bodySmall
                 )
             }
+            if (isPreparingRoom) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        when (roomOperation) {
+                            RoomOperation.CREATE -> "正在创建房间…"
+                            RoomOperation.JOIN -> "正在加入房间…"
+                            RoomOperation.RESTORE -> "正在恢复上次房间…"
+                            null -> "正在准备房间…"
+                        },
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
             Text("选择投屏方式", style = MaterialTheme.typography.titleMedium)
+            if (activeRoom == null) {
+                Text(
+                    "请先创建或加入房间",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Spacer(modifier = Modifier.height(12.dp))
 
             // ── 模式卡片：DLNA ───────────────────────────────────────────────
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+            ElevatedCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(if (activeRoom == null) 0.6f else 1f)
+            ) {
                 Row(
                     modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.Top
@@ -156,7 +328,6 @@ fun DeviceSelectorScreen(
                         // 自动搜索按钮
                         Button(
                             onClick = {
-                                if (!validateInputs()) return@Button
                                 saveSettings()
                                 isSearching = true; searchError = null; dlnaShowManualInput =
                                 false; deviceList = emptyArray()
@@ -171,7 +342,7 @@ fun DeviceSelectorScreen(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = !isSearching && !isDirectConnecting
+                            enabled = activeRoom != null && !isSearching && !isDirectConnecting
                         ) { Text(if (isSearching) "正在搜索..." else "搜索 DLNA 设备") }
                     }
                 }
@@ -245,7 +416,7 @@ fun DeviceSelectorScreen(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !isSearching && !isDirectConnecting && directIp.isNotBlank()
+                        enabled = activeRoom != null && !isSearching && !isDirectConnecting && directIp.isNotBlank()
                     ) { Text(if (isDirectConnecting) "正在连接..." else "直接连接") }
                 }
             }
@@ -260,9 +431,14 @@ fun DeviceSelectorScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 3.dp)
-                            .clickable {
-                                saveSettings()
-                                onDeviceSelect(baseUrl, roomIdStr, device)
+                            .clickable(enabled = activeRoom != null && !isPreparingRoom) {
+                                activeRoom?.let { room ->
+                                    onDeviceSelect(
+                                        room.baseUrl,
+                                        room.roomId,
+                                        device
+                                    )
+                                }
                             },
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
@@ -283,10 +459,11 @@ fun DeviceSelectorScreen(
             ElevatedCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        if (!validateInputs()) return@clickable
-                        saveSettings()
-                        onBilibiliMode(baseUrl, roomIdStr)
+                    .alpha(if (activeRoom == null) 0.6f else 1f)
+                    .clickable(enabled = activeRoom != null && !isPreparingRoom) {
+                        activeRoom?.let { room ->
+                            onBilibiliMode(room.baseUrl, room.roomId)
+                        }
                     }
             ) {
                 Row(
