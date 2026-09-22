@@ -6,6 +6,10 @@ This is a single-module Android project. Kotlin source lives under `app/src/main
 
 Native Rust artifacts belong in `app/src/main/jniLibs/<abi>/libktv_casting_lib.so`. Unit tests live in `app/src/test`; instrumented tests live in `app/src/androidTest`.
 
+## Dependent Rust Library
+
+The upstream Rust library is maintained in `KARAOKE-MASTER-ZJU/ktv-casting`. CI downloads its `.so` artifacts from the release tag specified by `rust_libs_version` in `gradle.properties`. The optional `CUSTOM_RUST_REPO` variable overrides the download repository.
+
 ## Fork Configuration
 
 Repository identity (GitHub owner/name) is read at build time from `app/local.properties`, which is gitignored. Forks should copy `app/local.properties.example` to `app/local.properties` and set their own values:

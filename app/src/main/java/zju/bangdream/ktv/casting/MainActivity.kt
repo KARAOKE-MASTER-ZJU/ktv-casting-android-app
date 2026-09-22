@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
                 var selectedDevice by rememberSaveable(stateSaver = deviceSaver) {
                     mutableStateOf<DlnaDeviceItem?>(null)
                 }
-                var selectedRoomId by rememberSaveable { mutableLongStateOf(0L) }
+                var selectedRoomId by rememberSaveable { mutableStateOf("") }
                 var selectedBaseUrl by rememberSaveable { mutableStateOf("") }
                 var castMode by rememberSaveable { mutableStateOf("dlna") }
 
@@ -106,6 +106,23 @@ class MainActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
 
                 val prefs = remember { getSharedPreferences("ktv_settings", Context.MODE_PRIVATE) }
+                var activeRoom by remember { mutableStateOf<ActiveRoom?>(null) }
+                // 连接页和播放页共享房间状态，同时更新下次启动恢复的记录。
+                val updateActiveRoom: (ActiveRoom?) -> Unit = { room ->
+                    prefs.edit().apply {
+                        if (room == null) {
+                            remove("active_room_base_url")
+                            remove("active_room_id")
+                        } else {
+                            putString("base_url", room.baseUrl)
+                            putString("room_id", room.roomId)
+                            putString("active_room_base_url", room.baseUrl)
+                            putString("active_room_id", room.roomId)
+                        }
+                        apply()
+                    }
+                    activeRoom = room
+                }
 
                 Surface(
                     modifier = Modifier
@@ -123,7 +140,7 @@ class MainActivity : ComponentActivity() {
                                 if (selectedDevice != null || castMode == "dlna") {
                                     stopCasting()
                                 }
-                                selectedRoomId = pendingRoomId.toLongOrNull() ?: 0L
+                                selectedRoomId = pendingRoomId
                                 selectedBaseUrl = pendingBaseUrl
                                 castMode = "bilibili"
                                 prefs.edit().apply {
@@ -192,6 +209,8 @@ class MainActivity : ComponentActivity() {
                                 ) { pageIndex ->
                                     when (pageIndex) {
                                         0 -> DeviceSelectorScreen(
+                                            activeRoom = activeRoom,
+                                            onActiveRoomChange = updateActiveRoom,
                                             onDeviceSelect = { url, room, device ->
                                                 // 如果当前已经有连接，先停止旧连接
                                                 if (selectedDevice != null || castMode == "bilibili") {
@@ -228,7 +247,7 @@ class MainActivity : ComponentActivity() {
                                                     onReset = {
                                                         stopCasting()
                                                         selectedDevice = null
-                                                        selectedRoomId = 0L
+                                                        selectedRoomId = ""
                                                         selectedBaseUrl = ""
                                                         castMode = "dlna"
                                                     },
@@ -236,14 +255,7 @@ class MainActivity : ComponentActivity() {
                                                         stopCasting()
                                                         selectedBaseUrl = newUrl
                                                         selectedRoomId = newRoomId
-                                                        prefs.edit().apply {
-                                                            putString("base_url", newUrl)
-                                                            putString(
-                                                                "room_id",
-                                                                newRoomId.toString()
-                                                            )
-                                                            apply()
-                                                        }
+                                                        updateActiveRoom(ActiveRoom(newUrl, newRoomId))
                                                         if (castMode == "bilibili") {
                                                             // B站模式：用新参数重启B站投屏
                                                             val buvid = prefs.getString(
@@ -251,7 +263,7 @@ class MainActivity : ComponentActivity() {
                                                                 ""
                                                             ) ?: ""
                                                             startBilibiliCastingService(
-                                                                newUrl, newRoomId.toString(), buvid,
+                                                                newUrl, newRoomId, buvid,
                                                                 prefs.getString(
                                                                     "last_bilibili_device",
                                                                     ""
@@ -287,7 +299,7 @@ class MainActivity : ComponentActivity() {
                                                             putString("last_bilibili_buvid", buvid)
                                                             apply()
                                                         }
-                                                        val roomStr = selectedRoomId.toString()
+                                                        val roomStr = selectedRoomId
                                                         startBilibiliCastingService(
                                                             selectedBaseUrl,
                                                             roomStr,
@@ -408,7 +420,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startDlnaCastingService(url: String, room: Long, device: DlnaDeviceItem) {
+    private fun startDlnaCastingService(url: String, room: String, device: DlnaDeviceItem) {
         RustEngine.logFromKotlin(
             "Casting",
             "启动 DLNA 投屏: $url, room=$room, device=${device.name}"
@@ -433,7 +445,7 @@ class MainActivity : ComponentActivity() {
         val intent = Intent(this, CastingService::class.java).apply {
             putExtra("mode", "bilibili")
             putExtra("base_url", url)
-            putExtra("room_id", roomId.toLongOrNull() ?: 0L)
+            putExtra("room_id", roomId)
             putExtra("buvid", buvid)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)

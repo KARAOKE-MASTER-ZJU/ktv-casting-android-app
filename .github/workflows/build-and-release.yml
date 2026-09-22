@@ -1,6 +1,6 @@
 # 触发方式：
 #   1. push v* tag          // 自动构建发布
-#   2. workflow_dispatch    // 手动触发，需输入版本号
+#   2. workflow_dispatch    // 手动编译检查，需输入版本号，不创建 Release
 #   3. push master 分支      // 仅构建，不发布
 #
 # 需在仓库 Settings → Secrets and variables → Actions 中配置：
@@ -53,15 +53,16 @@ jobs:
           # 从 gradle.properties 读取 Rust 库版本
           RUST_TAG=$(grep "rust_libs_version" gradle.properties | cut -d'=' -f2 | xargs)
 
-          # 判断触发方式：手动触发优先使用输入的版本号，否则使用 tag 名
+          # 手动构建使用输入版本；tag 发布使用 tag 名；分支构建使用独立的 CI 版本名。
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            # 手动触发：使用输入的版本号
             APP_CODE_VERSION="${{ github.event.inputs.version }}"
             echo "手动触发，使用指定版本号: $APP_CODE_VERSION"
-          else
-            # push/tag 触发：使用 tag 名
+          elif [ "${{ github.ref_type }}" == "tag" ]; then
             APP_CODE_VERSION="${{ github.ref_name }}"
-            echo "自动触发，使用 tag 名: $APP_CODE_VERSION"
+            echo "标签发布，使用版本号: $APP_CODE_VERSION"
+          else
+            APP_CODE_VERSION="v0.0.0+ci.${GITHUB_SHA:0:7}"
+            echo "分支编译检查，使用临时版本号: $APP_CODE_VERSION"
           fi
 
           # 写入环境变量
@@ -150,9 +151,10 @@ jobs:
       # 7. 创建 GitHub Release
       - name: Create Release
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: ${{ env.APP_CODE_VERSION }}
+          prerelease: ${{ contains(github.ref_name, '+dev.') || contains(github.ref_name, '-dev.') }}
           files: app/build/outputs/apk/release/*.apk
           body: |
             App 版本: ${{ env.APP_CODE_VERSION }}
@@ -163,7 +165,7 @@ jobs:
 
       # 8. 生成 release.json（供应用内更新检查使用）
       - name: Generate release.json
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -182,7 +184,7 @@ jobs:
 
       # 9. 确保 gh-pages 分支存在（首次运行自动创建）
       - name: Ensure gh-pages branch exists
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           if ! git ls-remote --heads origin gh-pages | grep -q gh-pages; then
             git checkout --orphan gh-pages
@@ -198,7 +200,7 @@ jobs:
 
       # 10. Checkout gh-pages 分支
       - name: Checkout gh-pages branch
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/checkout@v4
         with:
           ref: gh-pages
@@ -206,11 +208,11 @@ jobs:
 
       # 11. 推送 release.json 到 gh-pages
       - name: Update and push release.json
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           cp /tmp/pages/release.json .
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add release.json
-          git commit -m "chore: update release info - ${{ env.APP_CODE_VERSION }}" || echo "No changes to commit"
+          git commit -m "更新应用发布信息 - ${{ env.APP_CODE_VERSION }}" || echo "No changes to commit"
           git push origin gh-pages

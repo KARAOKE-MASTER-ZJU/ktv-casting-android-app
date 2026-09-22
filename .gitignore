@@ -13,3 +13,5 @@ local.properties
 /app/src/main/jniLibs/
 /app/release/
 /apks/
+/docs/
+AGENTS.override.md
