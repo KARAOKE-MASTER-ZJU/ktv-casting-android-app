@@ -56,6 +56,9 @@ object RustEngine {
     // 查询接口：由 KT 轮询获取状态
     external fun queryProgress(): IntArray      // 返回当前秒数
 
+    // 服务轮询专用：查询进度，并由 Rust 执行一次性自动切歌与固定 hash 重试。
+    external fun pollPlaybackProgress(): IntArray
+
     external fun resetEngine()
     /**
      * @return 1 为播放中，0 为暂停
