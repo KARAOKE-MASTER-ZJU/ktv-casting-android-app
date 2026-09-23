@@ -18,6 +18,14 @@ val repoName = project.findProperty("repo_name") as String?
     ?: localProps.getProperty("repo_name")
     ?: "ktv-casting-android-app"
 
+// CI can build only the ABIs for which native libraries were compiled.
+val supportedAbis = listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+val targetAbis = (project.findProperty("target_abis") as String?)
+    ?.split(",")?.map { it.trim() }?.distinct() ?: supportedAbis
+require(targetAbis.isNotEmpty() && targetAbis.all { it in supportedAbis }) {
+    "target_abis must be a comma-separated subset of $supportedAbis"
+}
+
 android {
     namespace = "zju.bangdream.ktv.casting"
     compileSdk = 36
@@ -43,12 +51,12 @@ android {
         abi {
             isEnable = true
             reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            isUniversalApk = true
+            include(*targetAbis.toTypedArray())
+            isUniversalApk = targetAbis.toSet() == supportedAbis.toSet()
         }
     }
 
-    // 确保 Gradle 能找到 GitHub Actions 下载的 .so 文件
+    // CI 源码构建和 Release 下载的 .so 使用同一目录。
     sourceSets {
         getByName("main") {
             jniLibs.directories.add("src/main/jniLibs")

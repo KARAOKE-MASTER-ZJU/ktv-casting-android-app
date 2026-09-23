@@ -1,0 +1,121 @@
+name: CI Tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      all_abis:
+        description: '检查全部四种 ABI'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Android and Rust source
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Select ABIs
+        id: abis
+        env:
+          ALL_ABIS: ${{ github.event_name == 'pull_request' || inputs.all_abis == true }}
+        run: |
+          if [ "$ALL_ABIS" = "true" ]; then
+            echo 'value=armeabi-v7a,arm64-v8a,x86,x86_64' >> "$GITHUB_OUTPUT"
+            echo 'targets=armv7-linux-androideabi,aarch64-linux-android,i686-linux-android,x86_64-linux-android' >> "$GITHUB_OUTPUT"
+          else
+            echo 'value=arm64-v8a' >> "$GITHUB_OUTPUT"
+            echo 'targets=aarch64-linux-android' >> "$GITHUB_OUTPUT"
+          fi
+          echo "APP_CODE_VERSION=0.0.0-ci.${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ steps.abis.outputs.targets }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/ktv-casting -> target
+          key: android-r25c-${{ steps.abis.outputs.value }}
+
+      - name: Set up Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25c
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build Rust libraries from submodule
+        working-directory: native/ktv-casting
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          TARGET_ABIS: ${{ steps.abis.outputs.value }}
+        run: |
+          IFS=',' read -ra abis <<< "$TARGET_ABIS"
+          args=()
+          for abi in "${abis[@]}"; do
+            args+=(-t "$abi")
+          done
+          cargo ndk "${args[@]}" --platform 24 \
+            -o "$GITHUB_WORKSPACE/app/src/main/jniLibs" \
+            build --release --lib --locked
+          for abi in "${abis[@]}"; do
+            test -s "$GITHUB_WORKSPACE/app/src/main/jniLibs/$abi/libktv_casting_lib.so"
+          done
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: gradle
+
+      - name: Test, lint and build debug APKs
+        env:
+          TARGET_ABIS: ${{ steps.abis.outputs.value }}
+          REPO_OWNER: ${{ vars.REPO_OWNER || github.repository_owner }}
+          REPO_NAME: ${{ vars.REPO_NAME || github.event.repository.name }}
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest lintDebug assembleDebug \
+            -Ptarget_abis="$TARGET_ABIS" \
+            -Papp_version_name="$APP_CODE_VERSION" \
+            -Prepo_owner="$REPO_OWNER" \
+            -Prepo_name="$REPO_NAME"
+
+      - name: Upload test APKs
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug-apks-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports-${{ github.run_number }}
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results-debug.*
+          if-no-files-found: ignore
+          retention-days: 7
