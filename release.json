@@ -1,7 +1,7 @@
 {
   "tag_name": "v1.6.0-dev.youtube.1",
   "published_at": "2026-09-28T15:02:27Z",
-  "body": "App 版本: v1.6.0-dev.youtube.1\nRust 引擎版本: v1.10.0-dev.youtube.2\n\n更新内容:\n- Merge pull request #17 from birchtree2/codex/update-rust-youtube-recast\n- Merge pull request #1 from birchtree2/codex/update-youtube-range-fix\n- fix: 更新Rust至v1.10.0-dev.youtube.2修复YouTube投屏403\n- 更新Rust依赖，整合重新投屏、定位缓存与YouTube代理\n- feat: 重新投屏按钮\n- build: 更新了composeBom便于调试\n",
+  "body": "本次为开发预览版，主要改进投屏兼容性与播放稳定性。\n\n更新内容：\n- 新增重新投屏按钮，方便在播放异常时重试。\n- 优化自动切歌流程，减少重复切歌。\n- 改进播放定位、缓存与媒体请求兼容性。\n- 修复修改房间后可能恢复旧房间的问题。\n\n提供四种架构及通用 APK。尚待更多 Android 设备与电视的实机回归验证。\n",
   "html_url": "https://github.com/KARAOKE-MASTER-ZJU/ktv-casting-android-app/releases/tag/v1.6.0-dev.youtube.1",
   "assets": [
     {
