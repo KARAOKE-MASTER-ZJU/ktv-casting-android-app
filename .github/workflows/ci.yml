@@ -19,15 +19,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-debug-apk:
+  select-abis:
     runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.abis.outputs.value }}
+      matrix: ${{ steps.abis.outputs.matrix }}
+      all: ${{ steps.abis.outputs.all }}
     steps:
-      - name: Checkout Android and Rust source
-        uses: actions/checkout@v7
-        with:
-          submodules: recursive
-          persist-credentials: false
-
       - name: Select ABIs
         id: abis
         env:
@@ -35,25 +33,38 @@ jobs:
         run: |
           if [ "$ALL_ABIS" = "true" ]; then
             echo 'value=armeabi-v7a,arm64-v8a,x86,x86_64' >> "$GITHUB_OUTPUT"
-            echo 'targets=armv7-linux-androideabi,aarch64-linux-android,i686-linux-android,x86_64-linux-android' >> "$GITHUB_OUTPUT"
-            echo 'cache_key=all-abis' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"abi":"armeabi-v7a","target":"armv7-linux-androideabi"},{"abi":"arm64-v8a","target":"aarch64-linux-android"},{"abi":"x86","target":"i686-linux-android"},{"abi":"x86_64","target":"x86_64-linux-android"}]' >> "$GITHUB_OUTPUT"
+            echo 'all=true' >> "$GITHUB_OUTPUT"
           else
             echo 'value=arm64-v8a' >> "$GITHUB_OUTPUT"
-            echo 'targets=aarch64-linux-android' >> "$GITHUB_OUTPUT"
-            echo 'cache_key=arm64-v8a' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"abi":"arm64-v8a","target":"aarch64-linux-android"}]' >> "$GITHUB_OUTPUT"
+            echo 'all=false' >> "$GITHUB_OUTPUT"
           fi
-          echo "APP_CODE_VERSION=0.0.0-ci.${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+
+  build-rust:
+    needs: select-abis
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.select-abis.outputs.matrix) }}
+    steps:
+      - name: Checkout Android and Rust source
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ steps.abis.outputs.targets }}
+          targets: ${{ matrix.target }}
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: native/ktv-casting -> target
-          key: android-r25c-${{ steps.abis.outputs.cache_key }}
+          key: android-r25c-${{ matrix.abi }}
 
       - name: Set up Android NDK
         id: ndk
@@ -68,18 +79,51 @@ jobs:
         working-directory: native/ktv-casting
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-          TARGET_ABIS: ${{ steps.abis.outputs.value }}
+          TARGET_ABI: ${{ matrix.abi }}
         run: |
-          IFS=',' read -ra abis <<< "$TARGET_ABIS"
-          args=()
-          for abi in "${abis[@]}"; do
-            args+=(-t "$abi")
-          done
-          cargo ndk "${args[@]}" --platform 24 \
+          cargo ndk -t "$TARGET_ABI" --platform 24 \
             -o "$GITHUB_WORKSPACE/app/src/main/jniLibs" \
             build --release --lib --locked
+          source="$GITHUB_WORKSPACE/app/src/main/jniLibs/$TARGET_ABI/libktv_casting_lib.so"
+          test -s "$source"
+          mkdir -p "$GITHUB_WORKSPACE/native-libs"
+          cp "$source" "$GITHUB_WORKSPACE/native-libs/libktv_casting_lib-$TARGET_ABI.so"
+
+      - name: Upload Rust library
+        uses: actions/upload-artifact@v7
+        with:
+          path: native-libs/libktv_casting_lib-${{ matrix.abi }}.so
+          archive: false
+          if-no-files-found: error
+          retention-days: 1
+
+  build-debug-apk:
+    needs: [select-abis, build-rust]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Android source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download Rust libraries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: libktv_casting_lib-*.so
+          path: native-libs
+          merge-multiple: true
+
+      - name: Place Rust libraries in jniLibs
+        env:
+          TARGET_ABIS: ${{ needs.select-abis.outputs.value }}
+        run: |
+          IFS=',' read -ra abis <<< "$TARGET_ABIS"
           for abi in "${abis[@]}"; do
-            test -s "$GITHUB_WORKSPACE/app/src/main/jniLibs/$abi/libktv_casting_lib.so"
+            source="native-libs/libktv_casting_lib-$abi.so"
+            test -s "$source"
+            target="app/src/main/jniLibs/$abi"
+            mkdir -p "$target"
+            cp "$source" "$target/libktv_casting_lib.so"
           done
 
       - name: Set up JDK 17
@@ -91,11 +135,12 @@ jobs:
 
       - name: Build debug APKs
         env:
-          TARGET_ABIS: ${{ steps.abis.outputs.value }}
+          TARGET_ABIS: ${{ needs.select-abis.outputs.value }}
           REPO_OWNER: ${{ vars.REPO_OWNER || github.repository_owner }}
           REPO_NAME: ${{ vars.REPO_NAME || github.event.repository.name }}
         run: |
           chmod +x gradlew
+          APP_CODE_VERSION="0.0.0-ci.${GITHUB_SHA:0:7}"
           ./gradlew assembleDebug \
             -Ptarget_abis="$TARGET_ABIS" \
             -Papp_version_name="$APP_CODE_VERSION" \
@@ -104,7 +149,7 @@ jobs:
 
       - name: Name debug APKs
         env:
-          TARGET_ABIS: ${{ steps.abis.outputs.value }}
+          TARGET_ABIS: ${{ needs.select-abis.outputs.value }}
         run: |
           python3 - <<'PY'
           import json
@@ -150,7 +195,7 @@ jobs:
           retention-days: 7
 
       - name: Upload armeabi-v7a APK
-        if: steps.abis.outputs.cache_key == 'all-abis'
+        if: needs.select-abis.outputs.all == 'true'
         uses: actions/upload-artifact@v7
         with:
           path: app/build/outputs/ci/*-armeabi-v7a.apk
@@ -159,7 +204,7 @@ jobs:
           retention-days: 7
 
       - name: Upload x86 APK
-        if: steps.abis.outputs.cache_key == 'all-abis'
+        if: needs.select-abis.outputs.all == 'true'
         uses: actions/upload-artifact@v7
         with:
           path: app/build/outputs/ci/*-x86.apk
@@ -168,7 +213,7 @@ jobs:
           retention-days: 7
 
       - name: Upload x86_64 APK
-        if: steps.abis.outputs.cache_key == 'all-abis'
+        if: needs.select-abis.outputs.all == 'true'
         uses: actions/upload-artifact@v7
         with:
           path: app/build/outputs/ci/*-x86_64.apk
@@ -177,7 +222,7 @@ jobs:
           retention-days: 7
 
       - name: Upload universal APK
-        if: steps.abis.outputs.cache_key == 'all-abis'
+        if: needs.select-abis.outputs.all == 'true'
         uses: actions/upload-artifact@v7
         with:
           path: app/build/outputs/ci/*-universal.apk
