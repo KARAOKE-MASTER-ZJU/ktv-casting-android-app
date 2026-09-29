@@ -91,7 +91,7 @@ jobs:
           path: native-libs/libktv_casting_lib-${{ matrix.abi }}.so
           archive: false
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
 
   build-debug-apk:
     needs: [select-abis, build-rust]
@@ -188,7 +188,7 @@ jobs:
           path: app/build/outputs/ci/*-arm64-v8a.apk
           archive: false
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
       - name: Upload armeabi-v7a APK
         if: needs.select-abis.outputs.all == 'true'
@@ -197,7 +197,7 @@ jobs:
           path: app/build/outputs/ci/*-armeabi-v7a.apk
           archive: false
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
       - name: Upload x86 APK
         if: needs.select-abis.outputs.all == 'true'
@@ -206,7 +206,7 @@ jobs:
           path: app/build/outputs/ci/*-x86.apk
           archive: false
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
       - name: Upload x86_64 APK
         if: needs.select-abis.outputs.all == 'true'
@@ -215,7 +215,7 @@ jobs:
           path: app/build/outputs/ci/*-x86_64.apk
           archive: false
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
       - name: Upload universal APK
         if: needs.select-abis.outputs.all == 'true'
@@ -224,4 +224,4 @@ jobs:
           path: app/build/outputs/ci/*-universal.apk
           archive: false
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
