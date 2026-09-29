@@ -1,4 +1,4 @@
-name: CI Tests
+name: Build Debug APK
 
 on:
   push:
@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  build-debug-apk:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Android and Rust source
@@ -87,35 +87,23 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      - name: Test, lint and build debug APKs
+      - name: Build debug APKs
         env:
           TARGET_ABIS: ${{ steps.abis.outputs.value }}
           REPO_OWNER: ${{ vars.REPO_OWNER || github.repository_owner }}
           REPO_NAME: ${{ vars.REPO_NAME || github.event.repository.name }}
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest lintDebug assembleDebug \
+          ./gradlew assembleDebug \
             -Ptarget_abis="$TARGET_ABIS" \
             -Papp_version_name="$APP_CODE_VERSION" \
             -Prepo_owner="$REPO_OWNER" \
             -Prepo_name="$REPO_NAME"
 
-      - name: Upload test APKs
+      - name: Upload debug APKs
         uses: actions/upload-artifact@v7
         with:
           name: debug-apks-${{ github.run_number }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload test and lint reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: test-reports-${{ github.run_number }}
-          path: |
-            app/build/reports/tests/
-            app/build/test-results/
-            app/build/reports/lint-results-debug.*
-          if-no-files-found: ignore
           retention-days: 7

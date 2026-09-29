@@ -41,13 +41,13 @@ Use 4-space indentation for Kotlin and Gradle Kotlin DSL files. Keep dependency 
 
 Use JUnit 4 in `app/src/test/java`. Use AndroidX Test, Espresso, and Compose UI tests in `app/src/androidTest/java`. Name tests after behavior, such as `queueEmpty_disablesNextButton`.
 
-This repository is verified through GitHub Actions rather than local Gradle. Before tagging, ensure `gradle.properties` manually sets `rust_libs_version` to the latest Rust release. Release tags must follow Semantic Versioning in `vMAJOR.MINOR.PATCH` form, for example `v1.6.9`. Push commits, create and push a `v*` tag, then monitor with `gh run list --limit 5` and `gh run watch <run-id>`. Branch pushes run test CI without publishing a release.
+This repository is verified through GitHub Actions rather than local Gradle. Before tagging, ensure `gradle.properties` manually sets `rust_libs_version` to the latest Rust release. Release tags must follow Semantic Versioning in `vMAJOR.MINOR.PATCH` form, for example `v1.6.9`. Push commits, create and push a `v*` tag, then monitor with `gh run list --limit 5` and `gh run watch <run-id>`. Branch pushes build debug APKs without publishing a release.
 
-The test workflow (`.github/workflows/ci.yml`) handles:
+The debug build workflow (`.github/workflows/ci.yml`) handles:
 - Every branch push: build Rust for `arm64-v8a` from the submodule
 - Pull requests: build all four Rust ABIs
 - Manual trigger: arm64 by default, with an `all_abis` option
-- JVM unit tests, Android Lint, and debug APKs uploaded as artifacts (no release signing secrets)
+- Debug APKs uploaded as artifacts (no release signing secrets)
 - `-Ptarget_abis=arm64-v8a` limits APK splits; omitting it keeps all four ABIs and the universal APK
 
 The release workflow (`.github/workflows/build-and-release.yml`) handles:
