@@ -25,6 +25,7 @@ val targetAbis = (project.findProperty("target_abis") as String?)
 require(targetAbis.isNotEmpty() && targetAbis.all { it in supportedAbis }) {
     "target_abis must be a comma-separated subset of $supportedAbis"
 }
+val ciReleaseSigning = project.findProperty("ci_release_signing") == "true"
 
 android {
     namespace = "zju.bangdream.ktv.casting"
@@ -63,7 +64,23 @@ android {
         }
     }
 
+    signingConfigs {
+        if (ciReleaseSigning) {
+            create("ciRelease") {
+                storeFile = file("release.jks")
+                storePassword = System.getenv("STORE_PASSWORD") ?: error("STORE_PASSWORD is required")
+                keyAlias = System.getenv("KEY_ALIAS") ?: error("KEY_ALIAS is required")
+                keyPassword = System.getenv("KEY_PASSWORD") ?: error("KEY_PASSWORD is required")
+            }
+        }
+    }
+
     buildTypes {
+        getByName("debug") {
+            if (ciReleaseSigning) {
+                signingConfig = signingConfigs.getByName("ciRelease")
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

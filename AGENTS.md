@@ -41,14 +41,14 @@ Use 4-space indentation for Kotlin and Gradle Kotlin DSL files. Keep dependency 
 
 Use JUnit 4 in `app/src/test/java`. Use AndroidX Test, Espresso, and Compose UI tests in `app/src/androidTest/java`. Name tests after behavior, such as `queueEmpty_disablesNextButton`.
 
-This repository is verified through GitHub Actions rather than local Gradle. Before tagging, ensure `gradle.properties` manually sets `rust_libs_version` to the latest Rust release. Release tags must follow Semantic Versioning in `vMAJOR.MINOR.PATCH` form, for example `v1.6.9`. Push commits, create and push a `v*` tag, then monitor with `gh run list --limit 5` and `gh run watch <run-id>`. Branch pushes build debug APKs without publishing a release.
+This repository is verified through GitHub Actions rather than local Gradle. Before tagging, ensure `gradle.properties` manually sets `rust_libs_version` to the latest Rust release. Release tags must follow Semantic Versioning in `vMAJOR.MINOR.PATCH` form, for example `v1.6.9`. Push commits, create and push a `v*` tag, then monitor with `gh run list --limit 5` and `gh run watch <run-id>`. Master pushes build release-signed debug APKs without publishing a release.
 
 The debug build workflow (`.github/workflows/ci.yml`) handles:
-- Every branch push: build Rust for `arm64-v8a` from the submodule
-- Pull requests: build all four Rust ABIs
-- Manual trigger: arm64 by default, with an `all_abis` option
+- Master pushes: build Rust for `arm64-v8a` from the submodule and sign debug APKs with the release key
+- Pull requests: build all four Rust ABIs and use the default debug signing key
+- Manual trigger: release signing, arm64 by default, with an `all_abis` option
 - Rust ABI builds run in parallel and pass their `.so` files to one Android debug build
-- Each Debug APK is uploaded directly as a separate artifact named `ktv-casting-<Android commit SHA>-<Asia/Shanghai yyyyMMdd>-<ABI>.apk`; all-ABI builds also include `universal`. No release signing secrets are used.
+- Each Debug APK is uploaded directly as a separate artifact named `ktv-casting-<Android commit SHA>-<Asia/Shanghai yyyyMMdd>-<ABI>.apk`; all-ABI builds also include `universal`. Release signing secrets are used only for master pushes and manual runs.
 - `-Ptarget_abis=arm64-v8a` limits APK splits; omitting it keeps all four ABIs and the universal APK
 
 The release workflow (`.github/workflows/build-and-release.yml`) handles:

@@ -2,7 +2,7 @@ name: Build Debug APK
 
 on:
   push:
-    branches: ['**']
+    branches: [master]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -129,7 +129,36 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      - name: Build debug APKs
+      - name: Restore release signing key
+        if: github.event_name != 'pull_request'
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          test -n "$SIGNING_KEY"
+          printf '%s' "$SIGNING_KEY" | base64 --decode > app/release.jks
+          test -s app/release.jks
+
+      - name: Build release-signed debug APKs
+        if: github.event_name != 'pull_request'
+        env:
+          TARGET_ABIS: ${{ needs.select-abis.outputs.value }}
+          REPO_OWNER: ${{ vars.REPO_OWNER || github.repository_owner }}
+          REPO_NAME: ${{ vars.REPO_NAME || github.event.repository.name }}
+          STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          APP_CODE_VERSION="0.0.0-ci.${GITHUB_SHA:0:7}"
+          ./gradlew assembleDebug \
+            -Ptarget_abis="$TARGET_ABIS" \
+            -Papp_version_name="$APP_CODE_VERSION" \
+            -Prepo_owner="$REPO_OWNER" \
+            -Prepo_name="$REPO_NAME" \
+            -Pci_release_signing=true
+
+      - name: Build debug-signed APKs
+        if: github.event_name == 'pull_request'
         env:
           TARGET_ABIS: ${{ needs.select-abis.outputs.value }}
           REPO_OWNER: ${{ vars.REPO_OWNER || github.repository_owner }}
