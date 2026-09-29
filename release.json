@@ -1,7 +1,7 @@
 {
   "tag_name": "v1.6.0-dev.casting.1",
   "published_at": "2026-09-29T10:02:40Z",
-  "body": "App 版本: v1.6.0-dev.casting.1\nRust 引擎版本: v1.10.0-dev.casting.2\n\n更新内容:\n- Merge pull request #19 from KARAOKE-MASTER-ZJU/codex/use-neutral-rust-release-tag\n- chore: use neutral Rust release tag\n",
+  "body": "本次为开发预览版，主要改进投屏兼容性与播放稳定性。\n\n更新内容：\n- 新增重新投屏按钮，方便在播放异常时重试。\n- 优化自动切歌流程，减少重复切歌。\n- 改进播放定位、缓存与媒体请求兼容性。\n- 修复修改房间后可能恢复旧房间的问题。\n\n提供四种架构及通用 APK。尚待更多 Android 设备与电视的实机回归验证。\n",
   "html_url": "https://github.com/KARAOKE-MASTER-ZJU/ktv-casting-android-app/releases/tag/v1.6.0-dev.casting.1",
   "assets": [
     {
