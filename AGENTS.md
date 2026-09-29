@@ -47,7 +47,7 @@ The debug build workflow (`.github/workflows/ci.yml`) handles:
 - Every branch push: build Rust for `arm64-v8a` from the submodule
 - Pull requests: build all four Rust ABIs
 - Manual trigger: arm64 by default, with an `all_abis` option
-- Debug APKs uploaded as artifacts (no release signing secrets)
+- Each Debug APK is uploaded directly as a separate artifact named `ktv-casting-<Android commit SHA>-<Asia/Shanghai yyyyMMdd>-<ABI>.apk`; all-ABI builds also include `universal`. No release signing secrets are used.
 - `-Ptarget_abis=arm64-v8a` limits APK splits; omitting it keeps all four ABIs and the universal APK
 
 The release workflow (`.github/workflows/build-and-release.yml`) handles:

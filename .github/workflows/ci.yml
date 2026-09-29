@@ -102,10 +102,85 @@ jobs:
             -Prepo_owner="$REPO_OWNER" \
             -Prepo_name="$REPO_NAME"
 
-      - name: Upload debug APKs
+      - name: Name debug APKs
+        env:
+          TARGET_ABIS: ${{ steps.abis.outputs.value }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          apk_dir = Path("app/build/outputs/apk/debug")
+          metadata = json.loads((apk_dir / "output-metadata.json").read_text())
+          target_dir = Path("app/build/outputs/ci")
+          target_dir.mkdir(parents=True, exist_ok=True)
+
+          abis = set(os.environ["TARGET_ABIS"].split(","))
+          expected = abis | ({"universal"} if len(abis) == 4 else set())
+          commit = os.environ["GITHUB_SHA"][:7]
+          build_date = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")
+          found = set()
+
+          for apk in metadata["elements"]:
+              abi_filters = [f["value"] for f in apk["filters"] if f["filterType"] == "ABI"]
+              target = abi_filters[0] if abi_filters else "universal"
+              if target not in expected or target in found:
+                  raise RuntimeError(f"Unexpected or duplicate APK target: {target}")
+              source = apk_dir / apk["outputFile"]
+              destination = target_dir / f"ktv-casting-{commit}-{build_date}-{target}.apk"
+              if not source.is_file():
+                  raise FileNotFoundError(source)
+              destination.write_bytes(source.read_bytes())
+              found.add(target)
+              print(destination)
+
+          if found != expected:
+              raise RuntimeError(f"Missing APK targets: {expected - found}")
+          PY
+
+      - name: Upload arm64-v8a APK
         uses: actions/upload-artifact@v7
         with:
-          name: debug-apks-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/ci/*-arm64-v8a.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload armeabi-v7a APK
+        if: steps.abis.outputs.cache_key == 'all-abis'
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/ci/*-armeabi-v7a.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload x86 APK
+        if: steps.abis.outputs.cache_key == 'all-abis'
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/ci/*-x86.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload x86_64 APK
+        if: steps.abis.outputs.cache_key == 'all-abis'
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/ci/*-x86_64.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload universal APK
+        if: steps.abis.outputs.cache_key == 'all-abis'
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/ci/*-universal.apk
+          archive: false
           if-no-files-found: error
           retention-days: 7
