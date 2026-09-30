@@ -8,7 +8,7 @@ Native Rust artifacts belong in `app/src/main/jniLibs/<abi>/libktv_casting_lib.s
 
 ## Dependent Rust Library
 
-The upstream Rust library is maintained in `KARAOKE-MASTER-ZJU/ktv-casting`. CI downloads its `.so` artifacts from the release tag specified by `rust_libs_version` in `gradle.properties`. The optional `CUSTOM_RUST_REPO` variable overrides the download repository.
+The upstream Rust library is maintained in `KARAOKE-MASTER-ZJU/ktv-casting`. Release CI downloads its `.so` artifacts from the release tag specified by `rust_libs_version` in `gradle.properties`. The optional `CUSTOM_RUST_REPO` variable overrides only the release download repository. Test CI builds the pinned `native/ktv-casting` submodule directly; it does not require a Rust release or override the Cargo version. Initialize or restore the pinned source with `git submodule update --init --recursive`.
 
 ## Fork Configuration
 
@@ -41,12 +41,19 @@ Use 4-space indentation for Kotlin and Gradle Kotlin DSL files. Keep dependency 
 
 Use JUnit 4 in `app/src/test/java`. Use AndroidX Test, Espresso, and Compose UI tests in `app/src/androidTest/java`. Name tests after behavior, such as `queueEmpty_disablesNextButton`.
 
-This repository is verified through GitHub Actions rather than local Gradle. Before tagging, ensure `gradle.properties` manually sets `rust_libs_version` to the latest Rust release. Release tags must follow Semantic Versioning in `vMAJOR.MINOR.PATCH` form, for example `v1.6.9`. Push commits, create and push a `v*` tag, then monitor with `gh run list --limit 5` and `gh run watch <run-id>`. Plain branch pushes may not start a run.
+This repository is verified through GitHub Actions rather than local Gradle. Before tagging, ensure `gradle.properties` manually sets `rust_libs_version` to the latest Rust release. Release tags must follow Semantic Versioning in `vMAJOR.MINOR.PATCH` form, for example `v1.6.9`. Push commits, create and push a `v*` tag, then monitor with `gh run list --limit 5` and `gh run watch <run-id>`. Master pushes build release-signed debug APKs without publishing a release.
 
-The CI workflow (`.github/workflows/build-and-release.yml`) handles:
+The debug build workflow (`.github/workflows/ci.yml`) handles:
+- Master pushes: build Rust for `arm64-v8a` from the submodule and sign debug APKs with the release key
+- Pull requests: build all four Rust ABIs and use the default debug signing key
+- Manual trigger: release signing, arm64 by default, with an `all_abis` option
+- Rust ABI builds run in parallel and pass their `.so` files to one Android debug build
+- Each Debug APK is uploaded directly as a separate artifact named `ktv-casting-<Android commit SHA>-<Asia/Shanghai yyyyMMdd>-<ABI>.apk`; all-ABI builds also include `universal`. Release signing secrets are used only for master pushes and manual runs.
+- `-Ptarget_abis=arm64-v8a` limits APK splits; omitting it keeps all four ABIs and the universal APK
+
+The release workflow (`.github/workflows/build-and-release.yml`) handles:
 - Auto-build on `v*` tag push
-- Manual trigger via `workflow_dispatch` (requires version input)
-- Branch push to `master` builds but does not create a release
+- Download all four ABI libraries from the configured Rust Release, then sign and publish APKs
 - Changelog generation from git history between tags
 - `release.json` pushed to `gh-pages` for in-app update checks
 

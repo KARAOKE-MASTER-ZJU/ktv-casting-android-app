@@ -1,0 +1,256 @@
+name: Build Debug APK
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      all_abis:
+        description: '检查全部四种 ABI'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  select-abis:
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.abis.outputs.value }}
+      matrix: ${{ steps.abis.outputs.matrix }}
+      all: ${{ steps.abis.outputs.all }}
+    steps:
+      - name: Select ABIs
+        id: abis
+        env:
+          ALL_ABIS: ${{ github.event_name == 'pull_request' || inputs.all_abis == true }}
+        run: |
+          if [ "$ALL_ABIS" = "true" ]; then
+            echo 'value=armeabi-v7a,arm64-v8a,x86,x86_64' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"abi":"armeabi-v7a","target":"armv7-linux-androideabi"},{"abi":"arm64-v8a","target":"aarch64-linux-android"},{"abi":"x86","target":"i686-linux-android"},{"abi":"x86_64","target":"x86_64-linux-android"}]' >> "$GITHUB_OUTPUT"
+            echo 'all=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'value=arm64-v8a' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"abi":"arm64-v8a","target":"aarch64-linux-android"}]' >> "$GITHUB_OUTPUT"
+            echo 'all=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  build-rust:
+    needs: select-abis
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.select-abis.outputs.matrix) }}
+    steps:
+      - name: Checkout Android and Rust source
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/ktv-casting -> target
+          key: android-r25c-${{ matrix.abi }}
+
+      - name: Set up Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25c
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build Rust libraries from submodule
+        working-directory: native/ktv-casting
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          TARGET_ABI: ${{ matrix.abi }}
+        run: |
+          cargo ndk -t "$TARGET_ABI" --platform 24 \
+            -o "$GITHUB_WORKSPACE/app/src/main/jniLibs" \
+            build --release --lib --locked
+          source="$GITHUB_WORKSPACE/app/src/main/jniLibs/$TARGET_ABI/libktv_casting_lib.so"
+          test -s "$source"
+          mkdir -p "$GITHUB_WORKSPACE/native-libs"
+          cp "$source" "$GITHUB_WORKSPACE/native-libs/libktv_casting_lib-$TARGET_ABI.so"
+
+      - name: Upload Rust library
+        uses: actions/upload-artifact@v7
+        with:
+          path: native-libs/libktv_casting_lib-${{ matrix.abi }}.so
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+  build-debug-apk:
+    needs: [select-abis, build-rust]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Android source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download Rust libraries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: libktv_casting_lib-*.so
+          path: native-libs
+          merge-multiple: true
+
+      - name: Place Rust libraries in jniLibs
+        env:
+          TARGET_ABIS: ${{ needs.select-abis.outputs.value }}
+        run: |
+          IFS=',' read -ra abis <<< "$TARGET_ABIS"
+          for abi in "${abis[@]}"; do
+            source="native-libs/libktv_casting_lib-$abi.so"
+            test -s "$source"
+            target="app/src/main/jniLibs/$abi"
+            mkdir -p "$target"
+            cp "$source" "$target/libktv_casting_lib.so"
+          done
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: gradle
+
+      - name: Restore release signing key
+        if: github.event_name != 'pull_request'
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          test -n "$SIGNING_KEY"
+          printf '%s' "$SIGNING_KEY" | base64 --decode > app/release.jks
+          test -s app/release.jks
+
+      - name: Build release-signed debug APKs
+        if: github.event_name != 'pull_request'
+        env:
+          TARGET_ABIS: ${{ needs.select-abis.outputs.value }}
+          REPO_OWNER: ${{ vars.REPO_OWNER || github.repository_owner }}
+          REPO_NAME: ${{ vars.REPO_NAME || github.event.repository.name }}
+          STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          APP_CODE_VERSION="0.0.0-ci.${GITHUB_SHA:0:7}"
+          ./gradlew assembleDebug \
+            -Ptarget_abis="$TARGET_ABIS" \
+            -Papp_version_name="$APP_CODE_VERSION" \
+            -Prepo_owner="$REPO_OWNER" \
+            -Prepo_name="$REPO_NAME" \
+            -Pci_release_signing=true
+
+      - name: Build debug-signed APKs
+        if: github.event_name == 'pull_request'
+        env:
+          TARGET_ABIS: ${{ needs.select-abis.outputs.value }}
+          REPO_OWNER: ${{ vars.REPO_OWNER || github.repository_owner }}
+          REPO_NAME: ${{ vars.REPO_NAME || github.event.repository.name }}
+        run: |
+          chmod +x gradlew
+          APP_CODE_VERSION="0.0.0-ci.${GITHUB_SHA:0:7}"
+          ./gradlew assembleDebug \
+            -Ptarget_abis="$TARGET_ABIS" \
+            -Papp_version_name="$APP_CODE_VERSION" \
+            -Prepo_owner="$REPO_OWNER" \
+            -Prepo_name="$REPO_NAME"
+
+      - name: Name debug APKs
+        env:
+          TARGET_ABIS: ${{ needs.select-abis.outputs.value }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          apk_dir = Path("app/build/outputs/apk/debug")
+          metadata = json.loads((apk_dir / "output-metadata.json").read_text())
+          target_dir = Path("app/build/outputs/ci")
+          target_dir.mkdir(parents=True, exist_ok=True)
+
+          abis = set(os.environ["TARGET_ABIS"].split(","))
+          expected = abis | ({"universal"} if len(abis) == 4 else set())
+          commit = os.environ["GITHUB_SHA"][:7]
+          build_date = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")
+          found = set()
+
+          for apk in metadata["elements"]:
+              abi_filters = [f["value"] for f in apk["filters"] if f["filterType"] == "ABI"]
+              target = abi_filters[0] if abi_filters else "universal"
+              if target not in expected or target in found:
+                  raise RuntimeError(f"Unexpected or duplicate APK target: {target}")
+              source = apk_dir / apk["outputFile"]
+              destination = target_dir / f"ktv-casting-{commit}-{build_date}-{target}.apk"
+              if not source.is_file():
+                  raise FileNotFoundError(source)
+              destination.write_bytes(source.read_bytes())
+              found.add(target)
+              print(destination)
+
+          if found != expected:
+              raise RuntimeError(f"Missing APK targets: {expected - found}")
+          PY
+
+      - name: Upload arm64-v8a APK
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/ci/*-arm64-v8a.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload armeabi-v7a APK
+        if: needs.select-abis.outputs.all == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/ci/*-armeabi-v7a.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload x86 APK
+        if: needs.select-abis.outputs.all == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/ci/*-x86.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload x86_64 APK
+        if: needs.select-abis.outputs.all == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/ci/*-x86_64.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload universal APK
+        if: needs.select-abis.outputs.all == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/ci/*-universal.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
