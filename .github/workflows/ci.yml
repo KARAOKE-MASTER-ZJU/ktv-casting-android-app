@@ -129,17 +129,24 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      - name: Restore release signing key
+      - name: Select signing and restore release key
+        id: signing
         if: github.event_name != 'pull_request'
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
         run: |
-          test -n "$SIGNING_KEY"
+          if [ -z "$SIGNING_KEY" ]; then
+            echo 'release=false' >> "$GITHUB_OUTPUT"
+            echo 'SIGNING_KEY is not configured; using default debug signing.'
+            exit 0
+          fi
           printf '%s' "$SIGNING_KEY" | base64 --decode > app/release.jks
           test -s app/release.jks
+          echo 'release=true' >> "$GITHUB_OUTPUT"
+          echo 'SIGNING_KEY is configured; using release signing.'
 
       - name: Build release-signed debug APKs
-        if: github.event_name != 'pull_request'
+        if: steps.signing.outputs.release == 'true'
         env:
           TARGET_ABIS: ${{ needs.select-abis.outputs.value }}
           REPO_OWNER: ${{ vars.REPO_OWNER || github.repository_owner }}
@@ -148,6 +155,9 @@ jobs:
           KEY_ALIAS: ${{ secrets.ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          : "${STORE_PASSWORD:?KEY_STORE_PASSWORD is required when SIGNING_KEY is configured}"
+          : "${KEY_ALIAS:?ALIAS is required when SIGNING_KEY is configured}"
+          : "${KEY_PASSWORD:?KEY_PASSWORD is required when SIGNING_KEY is configured}"
           chmod +x gradlew
           APP_CODE_VERSION="0.0.0-ci.${GITHUB_SHA:0:7}"
           ./gradlew assembleDebug \
@@ -158,12 +168,13 @@ jobs:
             -Pci_release_signing=true
 
       - name: Build debug-signed APKs
-        if: github.event_name == 'pull_request'
+        if: steps.signing.outputs.release != 'true'
         env:
           TARGET_ABIS: ${{ needs.select-abis.outputs.value }}
           REPO_OWNER: ${{ vars.REPO_OWNER || github.repository_owner }}
           REPO_NAME: ${{ vars.REPO_NAME || github.event.repository.name }}
         run: |
+          echo 'Building APKs with default debug signing.'
           chmod +x gradlew
           APP_CODE_VERSION="0.0.0-ci.${GITHUB_SHA:0:7}"
           ./gradlew assembleDebug \
