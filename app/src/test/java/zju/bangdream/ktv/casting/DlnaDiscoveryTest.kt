@@ -5,6 +5,46 @@ import org.junit.Test
 
 class DlnaDiscoveryTest {
     @Test
+    fun multicastLockSurroundsSearchAndIsReleasedOnSuccess() {
+        val events = mutableListOf<String>()
+        runWithDiscoveryLock({ events += "acquire" }, { events += "release" }) {
+            events += "search"
+            emptyArray()
+        }
+        assertEquals(listOf("acquire", "search", "release"), events)
+    }
+
+    @Test
+    fun multicastLockIsReleasedWhenNativeSearchThrows() {
+        var held = false
+        val failure = IllegalStateException("native failure")
+        try {
+            runWithDiscoveryLock({ held = true }, { held = false }) {
+                assertTrue(held)
+                throw failure
+            }
+            fail("failure must propagate")
+        } catch (actual: IllegalStateException) {
+            assertSame(failure, actual)
+        }
+        assertFalse(held)
+    }
+
+    @Test
+    fun failedLockAcquisitionDoesNotSearchOrReleaseAnUnheldLock() {
+        try {
+            runWithDiscoveryLock(
+                { throw SecurityException("denied") },
+                { fail("unacquired lock must not be released") },
+                { fail("discovery must not start"); emptyArray() }
+            )
+            fail("acquisition error must propagate")
+        } catch (expected: SecurityException) {
+            assertEquals("denied", expected.message)
+        }
+    }
+
+    @Test
     fun nativeFailureIsLoggedAndRethrownInsteadOfBecomingAnEmptyResult() {
         val logs = mutableListOf<Pair<LogLevel, String>>()
         val failure = IllegalStateException("socket unavailable")

@@ -3,6 +3,7 @@ package zju.bangdream.ktv.casting
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,12 +20,31 @@ object DlnaDiscovery {
             runDlnaDiscovery(
                 mode = if (descriptionUrl == null) "自动搜索" else "手动连接",
                 discover = {
-                    if (descriptionUrl == null) RustEngine.searchDevices()
+                    if (descriptionUrl == null) searchWithLock(context)
                     else RustEngine.searchDeviceByUrl(descriptionUrl)
                 },
                 log = { level, message -> LogRepository.add(level, TAG, message) }
             )
         }
+
+    private fun searchWithLock(context: Context): Array<DlnaDeviceItem> {
+        val manager = context.applicationContext.getSystemService(WifiManager::class.java)
+        // A local strong reference remains alive until synchronous JNI discovery returns.
+        // Every search owns its lock; cancellation/exception also goes through finally.
+        val lock = manager.createMulticastLock("ktv_dlna_discovery")
+        lock.setReferenceCounted(false)
+        return runWithDiscoveryLock(
+            acquire = {
+                lock.acquire()
+                LogRepository.add(LogLevel.INFO, TAG, "多播锁已获取：isHeld=${lock.isHeld}")
+            },
+            release = {
+                if (lock.isHeld) lock.release()
+                LogRepository.add(LogLevel.INFO, TAG, "多播锁已释放：isHeld=${lock.isHeld}")
+            },
+            discover = { RustEngine.searchDevices() }
+        )
+    }
 
     private fun logNetworkContext(context: Context) {
         LogRepository.add(
@@ -42,12 +62,26 @@ object DlnaDiscovery {
                 "系统默认网络：存在=${network != null}" +
                     "，Wi-Fi=${capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)}" +
                     "，VPN=${capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN)}" +
+                    "，本地地址=${properties?.linkAddresses?.joinToString { it.toString() } ?: "未知"}" +
                     "，接口=${properties?.interfaceName ?: "未知"}；此信息不代表 SSDP 实际选用的接口"
             )
         } catch (error: SecurityException) {
             // Diagnostic metadata must not prevent the existing discovery call.
             LogRepository.add(LogLevel.WARN, TAG, "无法读取默认网络信息：${error.javaClass.simpleName}")
         }
+    }
+}
+
+internal fun runWithDiscoveryLock(
+    acquire: () -> Unit,
+    release: () -> Unit,
+    discover: () -> Array<DlnaDeviceItem>
+): Array<DlnaDeviceItem> {
+    acquire()
+    try {
+        return discover()
+    } finally {
+        release()
     }
 }
 

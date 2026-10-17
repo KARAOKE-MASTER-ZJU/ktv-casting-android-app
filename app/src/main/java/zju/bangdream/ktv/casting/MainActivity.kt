@@ -2,7 +2,6 @@ package zju.bangdream.ktv.casting
 
 import android.content.Context
 import android.content.Intent
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -353,8 +352,6 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
-        val wifiManager = getSystemService(WIFI_SERVICE) as WifiManager
-        wifiManager.createMulticastLock("ktv_search_lock").acquire()
     }
 
     private fun stopCasting() {
