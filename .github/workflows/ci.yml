@@ -129,6 +129,11 @@ jobs:
           distribution: temurin
           cache: gradle
 
+      - name: Run unit tests
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest
+
       - name: Select signing and restore release key
         id: signing
         if: github.event_name != 'pull_request'
