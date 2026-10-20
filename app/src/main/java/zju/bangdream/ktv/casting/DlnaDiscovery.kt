@@ -90,19 +90,10 @@ internal fun runDlnaDiscovery(
     discover: () -> Array<DlnaDeviceItem>,
     log: (LogLevel, String) -> Unit
 ): Array<DlnaDeviceItem> {
-    val started = System.nanoTime()
-    log(LogLevel.INFO, "$mode：调用原生发现接口")
     try {
-        val devices = discover()
-        val elapsed = (System.nanoTime() - started) / 1_000_000
-        log(LogLevel.INFO, "$mode：原生接口返回，设备数=${devices.size}，耗时=${elapsed}ms")
-        if (devices.isEmpty()) {
-            log(LogLevel.WARN, "$mode：返回空列表，请结合原生搜索日志区分无结果、过滤和发现错误")
-        }
-        return devices
+        return discover()
     } catch (error: Exception) {
-        val elapsed = (System.nanoTime() - started) / 1_000_000
-        log(LogLevel.ERROR, "$mode：原生调用异常，耗时=${elapsed}ms，${error.javaClass.name}: ${error.message}")
+        log(LogLevel.ERROR, "$mode：原生调用异常，${error.javaClass.name}: ${error.message}")
         throw error
     }
 }
