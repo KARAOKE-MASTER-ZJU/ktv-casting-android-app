@@ -27,6 +27,7 @@ import zju.bangdream.ktv.casting.CastingService
 import zju.bangdream.ktv.casting.DlnaDeviceItem
 import zju.bangdream.ktv.casting.RustEngine
 import zju.bangdream.ktv.casting.parseBilibiliDevices
+import zju.bangdream.ktv.casting.bilibiliPartSelectionMessage
 import org.json.JSONArray
 import zju.bangdream.ktv.casting.ui.components.BilibiliExtraControls
 import zju.bangdream.ktv.casting.ui.components.VolumeControlGroup
@@ -53,6 +54,7 @@ fun CastingControlScreen(
     val (currentSec, totalSec) = progressState
 
     val songTitle by CastingService.currentSongTitle.collectAsState()
+    val songId by CastingService.currentSongId.collectAsState()
     val castMode by CastingService.castMode.collectAsState()
 
     var isPlaying by remember { mutableStateOf(true) }
@@ -92,6 +94,26 @@ fun CastingControlScreen(
         isRecasting = isRecasting,
         queuedCount = queuedCount,
         sungCount = sungCount,
+        partsControl = {
+            key(songId) {
+                BilibiliPartsControl(
+                    enabled = songId.isNotEmpty(),
+                    loadParts = {
+                        withContext(Dispatchers.IO) { RustEngine.getCurrentBilibiliParts() }
+                    },
+                    selectPart = { id, pageIndex ->
+                        withContext(Dispatchers.IO) {
+                            RustEngine.selectCurrentBilibiliPart(id, pageIndex)
+                        }
+                    },
+                    onSelectionResult = { result ->
+                        bilibiliPartSelectionMessage(result)?.let { message ->
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                )
+            }
+        },
         onRecast = {
             if (!isRecasting) {
                 isRecasting = true
@@ -160,6 +182,7 @@ fun CastingControlContent(
     isRecasting: Boolean = false,
     queuedCount: Int = 0,
     sungCount: Int = 0,
+    partsControl: @Composable () -> Unit = {},
     onTogglePause: () -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit,
@@ -552,6 +575,8 @@ fun CastingControlContent(
                     }
                 }
             }
+
+            partsControl()
 
             if (songTitle == "暂无歌曲") {
                 Spacer(modifier = Modifier.height(8.dp))

@@ -22,6 +22,9 @@ class CastingService : Service() {
         private val _currentSongTitle = MutableStateFlow("正在加载...")
         val currentSongTitle = _currentSongTitle.asStateFlow()
 
+        private val _currentSongId = MutableStateFlow("")
+        val currentSongId = _currentSongId.asStateFlow()
+
         // 投屏模式状态流
         private val _castMode = MutableStateFlow("dlna")
         val castMode = _castMode.asStateFlow()
@@ -33,6 +36,7 @@ class CastingService : Service() {
         fun resetProgress() {
             _playbackProgress.value = Pair(0L, 0L)
             _currentSongTitle.value = "已停止"
+            _currentSongId.value = ""
         }
     }
 
@@ -78,6 +82,7 @@ class CastingService : Service() {
                 delay(500)
                 // Rust handles the once trigger and retries with a fixed playlist hash.
                 val progress = RustEngine.pollPlaybackProgress()
+                _currentSongId.value = RustEngine.getCurrentSongId()
                 if (progress.size < 2) continue
 
                 val current = progress[0].toLong()

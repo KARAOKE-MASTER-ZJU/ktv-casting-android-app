@@ -127,6 +127,18 @@ object RustEngine {
      */
     external fun getCurrentSongTitle(): String
 
+    /** 最近一次同步的当前歌曲 ID；无当前歌曲时为空，不发起网络请求。 */
+    external fun getCurrentSongId(): String
+
+    /** 查询当前歌曲的分 P JSON；失败返回空字符串。必须在 IO 线程调用。 */
+    external fun getCurrentBilibiliParts(): String
+
+    /**
+     * 选择当前歌曲的分 P，pageIndex 从 0 开始。必须在 IO 线程调用。
+     * @return 1=已提交，0=未变化，-1=失败；提交成功不代表设备已开始播放。
+     */
+    external fun selectCurrentBilibiliPart(songId: String, pageIndex: Int): Int
+
     /**
      * 获取队列中还有多少首歌未播；-1 表示引擎未初始化
      */
