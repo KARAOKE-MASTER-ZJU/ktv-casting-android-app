@@ -2,7 +2,6 @@ package zju.bangdream.ktv.casting
 
 import android.content.Context
 import android.content.Intent
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -210,6 +209,7 @@ class MainActivity : ComponentActivity() {
                                     when (pageIndex) {
                                         0 -> DeviceSelectorScreen(
                                             activeRoom = activeRoom,
+                                            onOpenLogs = { showLogs = true },
                                             onActiveRoomChange = updateActiveRoom,
                                             onDeviceSelect = { url, room, device ->
                                                 // 如果当前已经有连接，先停止旧连接
@@ -239,6 +239,7 @@ class MainActivity : ComponentActivity() {
                                                     else prefs.getString("last_bilibili_device", "")
                                                         ?: ""
                                                 CastingControlScreen(
+                                                    onOpenLogs = { showLogs = true },
                                                     deviceName = deviceName,
                                                     roomId = selectedRoomId,
                                                     baseUrl = selectedBaseUrl.ifEmpty {
@@ -351,8 +352,6 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
-        val wifiManager = getSystemService(WIFI_SERVICE) as WifiManager
-        wifiManager.createMulticastLock("ktv_search_lock").acquire()
     }
 
     private fun stopCasting() {

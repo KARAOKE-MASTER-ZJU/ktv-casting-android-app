@@ -17,14 +17,14 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import zju.bangdream.ktv.casting.ActiveRoom
+import zju.bangdream.ktv.casting.DlnaDiscovery
 import zju.bangdream.ktv.casting.DlnaDeviceItem
 import zju.bangdream.ktv.casting.EnsureRoomResult
 import zju.bangdream.ktv.casting.RoomApi
 import zju.bangdream.ktv.casting.RoomEntryMode
 import zju.bangdream.ktv.casting.RoomExistenceResult
-import zju.bangdream.ktv.casting.RustEngine
-import kotlin.concurrent.thread
 
 private enum class RoomOperation {
     CREATE,
@@ -45,6 +45,7 @@ fun DeviceSelectorScreen(
     onActiveRoomChange: (ActiveRoom?) -> Unit,
     onDeviceSelect: (String, String, DlnaDeviceItem) -> Unit,
     onBilibiliMode: (baseUrl: String, roomId: String) -> Unit,
+    onOpenLogs: () -> Unit,
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -327,13 +328,20 @@ fun DeviceSelectorScreen(
                                 saveSettings()
                                 isSearching = true; searchError = null; dlnaShowManualInput =
                                 false; deviceList = emptyArray()
-                                thread {
-                                    val results = RustEngine.searchDevices()
-                                    deviceList = results; isSearching = false
-                                    if (results.isEmpty()) {
-                                        searchError =
-                                            "未发现设备，请检查设备是否在线和 WiFi 是否支持多播"
+                                coroutineScope.launch {
+                                    try {
+                                        deviceList = DlnaDiscovery.search(context)
+                                        if (deviceList.isEmpty()) {
+                                            searchError = DlnaDiscovery.EMPTY_MESSAGE
+                                            dlnaShowManualInput = true
+                                        }
+                                    } catch (error: CancellationException) {
+                                        throw error
+                                    } catch (error: Exception) {
+                                        searchError = DlnaDiscovery.ERROR_MESSAGE
                                         dlnaShowManualInput = true
+                                    } finally {
+                                        isSearching = false
                                     }
                                 }
                             },
@@ -362,6 +370,7 @@ fun DeviceSelectorScreen(
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
                         Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(onClick = onOpenLogs) { Text("查看运行日志") }
                         TextButton(
                             onClick = { dlnaShowManualInput = !dlnaShowManualInput },
                             modifier = Modifier.align(Alignment.End)
@@ -403,12 +412,19 @@ fun DeviceSelectorScreen(
                         onClick = {
                             if (directIp.isBlank()) return@Button
                             saveSettings(); isDirectConnecting = true; deviceList = emptyArray()
+                            searchError = null
                             val url = normalizeDeviceUrl(directIp)
-                            thread {
-                                val results = RustEngine.searchDeviceByUrl(url)
-                                deviceList = results; isDirectConnecting = false
-                                if (results.isEmpty())
-                                    searchError = "连接失败，请检查 IP 是否正确，设备是否开启"
+                            coroutineScope.launch {
+                                try {
+                                    deviceList = DlnaDiscovery.search(context, url)
+                                    if (deviceList.isEmpty()) searchError = DlnaDiscovery.EMPTY_MESSAGE
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: Exception) {
+                                    searchError = DlnaDiscovery.ERROR_MESSAGE
+                                } finally {
+                                    isDirectConnecting = false
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),

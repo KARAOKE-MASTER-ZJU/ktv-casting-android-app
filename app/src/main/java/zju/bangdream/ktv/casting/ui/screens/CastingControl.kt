@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import zju.bangdream.ktv.casting.BilibiliDevice
 import zju.bangdream.ktv.casting.CastingService
 import zju.bangdream.ktv.casting.DlnaDeviceItem
+import zju.bangdream.ktv.casting.DlnaDiscovery
 import zju.bangdream.ktv.casting.RustEngine
 import zju.bangdream.ktv.casting.parseBilibiliDevices
 import zju.bangdream.ktv.casting.bilibiliPartSelectionMessage
@@ -35,6 +36,7 @@ import kotlin.concurrent.thread
 import androidx.core.net.toUri
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -44,6 +46,7 @@ fun CastingControlScreen(
     roomId: String,
     baseUrl: String,
     onReset: () -> Unit,
+    onOpenLogs: () -> Unit,
     onChangeSettings: (newBaseUrl: String, newRoomId: String) -> Unit = { _, _ -> },
     onChangeDevice: (newDevice: DlnaDeviceItem) -> Unit = {},
     onChangeToBilibiliDevice: (buvid: String, name: String) -> Unit = { _, _ -> },
@@ -82,6 +85,7 @@ fun CastingControlScreen(
     }
 
     CastingControlContent(
+        onOpenLogs = onOpenLogs,
         deviceName = deviceName,
         roomId = roomId,
         baseUrl = baseUrl,
@@ -189,11 +193,13 @@ fun CastingControlContent(
     onSeek: (Int) -> Unit,
     onReset: () -> Unit,
     onRecast: () -> Unit,
+    onOpenLogs: () -> Unit = {},
     onChangeSettings: (newBaseUrl: String, newRoomId: String) -> Unit = { _, _ -> },
     onChangeDevice: (newDevice: DlnaDeviceItem) -> Unit = {},
     onChangeToBilibiliDevice: (buvid: String, name: String) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
+    val discoveryScope = rememberCoroutineScope()
     var isDraggingProgress by remember { mutableStateOf(false) }
     var dragProgressValue by remember { mutableFloatStateOf(0f) }
     var showResetDialog by remember { mutableStateOf(false) }
@@ -268,6 +274,7 @@ fun CastingControlContent(
         var selectedTab by remember { mutableIntStateOf(0) } // 0=DLNA, 1=B站
         var dlnaDeviceList by remember { mutableStateOf(emptyArray<DlnaDeviceItem>()) }
         var dlnaSearching by remember { mutableStateOf(false) }
+        var dlnaError by remember { mutableStateOf<String?>(null) }
         var bilibiliDeviceList by remember { mutableStateOf<List<BilibiliDevice>>(emptyList()) }
         var bilibiliLoading by remember { mutableStateOf(false) }
         var bilibiliError by remember { mutableStateOf<String?>(null) }
@@ -304,17 +311,34 @@ fun CastingControlContent(
                         Button(
                             onClick = {
                                 dlnaSearching = true
-                                thread {
-                                    dlnaDeviceList = RustEngine.searchDevices()
-                                    dlnaSearching = false
+                                dlnaError = null
+                                dlnaDeviceList = emptyArray()
+                                discoveryScope.launch {
+                                    try {
+                                        dlnaDeviceList = DlnaDiscovery.search(context)
+                                        if (dlnaDeviceList.isEmpty()) dlnaError = DlnaDiscovery.EMPTY_MESSAGE
+                                    } catch (error: CancellationException) {
+                                        throw error
+                                    } catch (error: Exception) {
+                                        dlnaError = DlnaDiscovery.ERROR_MESSAGE
+                                    } finally {
+                                        dlnaSearching = false
+                                    }
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = !dlnaSearching
+                            enabled = !dlnaSearching && !manualConnecting
                         ) {
                             Text(if (dlnaSearching) "正在搜索..." else "搜索 DLNA 设备")
                         }
                         Spacer(modifier = Modifier.height(8.dp))
+                        dlnaError?.let { message ->
+                            Text(message, color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = {
+                                showDeviceDialog = false
+                                onOpenLogs()
+                            }) { Text("查看运行日志") }
+                        }
                         if (dlnaSearching) {
                             CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
                         } else {
@@ -371,14 +395,23 @@ fun CastingControlContent(
                                         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) trimmed
                                         else "http://$trimmed"
                                     manualConnecting = true
-                                    thread {
-                                        val results = RustEngine.searchDeviceByUrl(url)
-                                        dlnaDeviceList = results
-                                        manualConnecting = false
+                                    dlnaError = null
+                                    dlnaDeviceList = emptyArray()
+                                    discoveryScope.launch {
+                                        try {
+                                            dlnaDeviceList = DlnaDiscovery.search(context, url)
+                                            if (dlnaDeviceList.isEmpty()) dlnaError = DlnaDiscovery.EMPTY_MESSAGE
+                                        } catch (error: CancellationException) {
+                                            throw error
+                                        } catch (error: Exception) {
+                                            dlnaError = DlnaDiscovery.ERROR_MESSAGE
+                                        } finally {
+                                            manualConnecting = false
+                                        }
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = !manualConnecting && manualUrl.isNotBlank()
+                                enabled = !manualConnecting && !dlnaSearching && manualUrl.isNotBlank()
                             ) {
                                 Text(if (manualConnecting) "正在连接..." else "直接连接")
                             }
