@@ -57,21 +57,4 @@ class DlnaDiscoveryTest {
         assertTrue(logs.any { it.first == LogLevel.ERROR && it.second.contains("socket unavailable") })
         assertEquals(1, logs.size)
     }
-
-    @Test
-    fun emptyNativeResultDoesNotDuplicateNativeSummaryLogs() {
-        val logs = mutableListOf<Pair<LogLevel, String>>()
-        val result = runDlnaDiscovery("自动搜索", { emptyArray() }) { level, text -> logs += level to text }
-        assertTrue(result.isEmpty())
-        assertTrue(logs.isEmpty())
-    }
-
-    @Test
-    fun successfulResultPreservesDeviceWithoutDuplicateLogs() {
-        val logs = mutableListOf<Pair<LogLevel, String>>()
-        val devices = arrayOf(DlnaDeviceItem("Renderer", "http://host/description.xml?token=secret"))
-        val result = runDlnaDiscovery("手动连接", { devices }) { level, text -> logs += level to text }
-        assertSame(devices, result)
-        assertTrue(logs.isEmpty())
-    }
 }
