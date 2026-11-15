@@ -1,7 +1,5 @@
 # ktv-casting-for-android
 
----
-
 > [!WARNING]
 > **本仓库已停止维护，请移步 [KARAM@S](https://github.com/KARAOKE-MASTER-ZJU/karamas)。**
 >
@@ -12,8 +10,6 @@
 ---
 
 使用教程见[飞书文档](https://idol-zju.feishu.cn/wiki/Ytt1wNh88i6E9jkEndhcxNmYnBd)
-
----
 
 本项目是 [ktv-casting](https://github.com/KARAOKE-MASTER-ZJU/ktv-casting) 的安卓前端
 
