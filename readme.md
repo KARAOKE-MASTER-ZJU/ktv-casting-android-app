@@ -2,6 +2,15 @@
 
 ---
 
+> [!WARNING]
+> **本仓库已停止维护，请移步 [KARAM@S](https://github.com/KARAOKE-MASTER-ZJU/karamas)。**
+>
+> 原 Android 应用与投屏核心已整合并重构为跨平台项目 KARAM@S，支持 Windows、macOS、Linux 和 Android。后续更新与维护将在新仓库进行。
+>
+> [下载最新版](https://github.com/KARAOKE-MASTER-ZJU/karamas/releases/latest) · [问题反馈](https://github.com/KARAOKE-MASTER-ZJU/karamas/issues)
+
+---
+
 使用教程见[飞书文档](https://idol-zju.feishu.cn/wiki/Ytt1wNh88i6E9jkEndhcxNmYnBd)
 
 ---
